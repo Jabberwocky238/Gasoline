@@ -20,13 +20,20 @@ func (d *Device) handleTUNData() {
 		case <-d.stopChan:
 			return
 		default:
-			n, err := d.tunDevice.Read(buffers, sizes, 0)
-			if err != nil || n == 0 {
+			// 添加超时机制，避免无限阻塞
+			n, err := d.tun.Read(buffers, sizes, 0)
+			if err != nil {
+				// 如果是连接关闭错误，退出循环
+				if err.Error() == "use of closed network connection" {
+					return
+				}
+				// 其他错误继续处理
 				continue
 			}
-
+			if n == 0 {
+				continue
+			}
 			// 处理从TUN设备读取的数据
-			// 这里可以根据目标IP查找对应的对端连接并转发
 			d.HandleOutbound(buffers[0][:sizes[0]])
 		}
 	}
@@ -50,8 +57,6 @@ func (d *Device) connectToPeer(peer *PeerInfo) error {
 	if peer.Endpoint == nil {
 		return fmt.Errorf("对端没有endpoint")
 	}
-
-	fmt.Printf("正在连接到对端: %s\n", peer.Endpoint.String())
 
 	// 建立TCP连接
 	conn, err := net.Dial("tcp", peer.Endpoint.String())
@@ -124,7 +129,6 @@ func (d *Device) performClientHandshake(tlsConn *tls.Conn) ([]byte, error) {
 		return nil, fmt.Errorf("服务器ID长度不正确，期望32字节，实际%d字节", n)
 	}
 
-	fmt.Printf("客户端握手完成 - 客户端ID: %x, 服务器ID: %x\n", clientID, serverID)
 	return serverID, nil
 }
 
@@ -209,7 +213,6 @@ func (d *Device) performCustomHandshake(tlsConn *tls.Conn) ([]byte, error) {
 		return nil, fmt.Errorf("发送服务器ID失败: %v", err)
 	}
 
-	fmt.Printf("握手完成 - 客户端ID: %x, 服务器ID: %x\n", clientID, serverID)
 	return clientID, nil
 }
 
@@ -246,21 +249,18 @@ func (d *Device) handleProtocolMessages(tlsConn *tls.Conn, peerKey string) {
 			}
 
 			if n != 32 {
-				fmt.Printf("协议消息头部长度错误，期望32字节，实际%d字节\n", n)
 				continue
 			}
 
 			// 解析头部获取数据长度
 			var tempMsg ProtocolMessage
 			if err := tempMsg.Deserialize(header); err != nil {
-				fmt.Printf("解析协议消息头部失败: %v\n", err)
 				continue
 			}
 
 			// 读取完整消息
 			totalLength := 32 + int(tempMsg.DataLength)
 			if totalLength > len(buffer) {
-				fmt.Printf("协议消息过长，期望%d字节，最大支持%d字节\n", totalLength, len(buffer))
 				continue
 			}
 
@@ -271,12 +271,7 @@ func (d *Device) handleProtocolMessages(tlsConn *tls.Conn, peerKey string) {
 			if tempMsg.DataLength > 0 {
 				dataPart := buffer[32:totalLength]
 				n, err := tlsConn.Read(dataPart)
-				if err != nil {
-					fmt.Printf("读取协议消息数据失败: %v\n", err)
-					continue
-				}
-				if n != int(tempMsg.DataLength) {
-					fmt.Printf("协议消息数据长度错误，期望%d字节，实际%d字节\n", tempMsg.DataLength, n)
+				if err != nil || n != int(tempMsg.DataLength) {
 					continue
 				}
 			}
@@ -284,24 +279,19 @@ func (d *Device) handleProtocolMessages(tlsConn *tls.Conn, peerKey string) {
 			// 解析完整协议消息
 			var msg ProtocolMessage
 			if err := msg.Deserialize(buffer[:totalLength]); err != nil {
-				fmt.Printf("解析协议消息失败: %v\n", err)
 				continue
 			}
 
 			// 验证消息
 			if !msg.IsValid() {
-				fmt.Printf("无效的协议消息: %s\n", msg.String())
 				continue
 			}
 
 			// 根据消息类型处理
 			switch msg.Type {
 			case Data:
-				if err := d.HandleInbound(&msg, tlsConn); err != nil {
-					fmt.Printf("处理入站数据失败: %v\n", err)
-				}
+				d.HandleInbound(&msg, tlsConn)
 			default:
-				fmt.Printf("未知的消息类型: %d\n", msg.Type)
 			}
 		}
 	}

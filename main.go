@@ -15,6 +15,7 @@ import (
 func main() {
 	// 命令行参数
 	var configPath = flag.String("f", "", "配置文件路径")
+	var tunName = flag.String("n", "tun0", "TUN设备名称")
 	var help = flag.Bool("help", false, "显示帮助信息")
 	flag.Parse()
 
@@ -45,7 +46,7 @@ func main() {
 	}
 
 	// 创建设备实例
-	dev, err := device.NewDevice(cfg)
+	dev, err := device.NewDevice(cfg, *tunName)
 	if err != nil {
 		log.Fatalf("创建设备失败: %v", err)
 	}

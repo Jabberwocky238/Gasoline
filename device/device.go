@@ -30,7 +30,7 @@ type Device struct {
 	config *config.Config
 
 	// TUN 接口
-	tunDevice tun.Device
+	tun tun.Device
 
 	// 对端映射表 (公钥 -> PeerInfo)
 	indexMap   map[string]*PeerInfo
@@ -53,7 +53,7 @@ type Device struct {
 }
 
 // NewDevice 创建新的设备实例
-func NewDevice(cfg *config.Config) (*Device, error) {
+func NewDevice(cfg *config.Config, tunName string) (*Device, error) {
 	device := &Device{
 		config:            cfg,
 		indexMap:          make(map[string]*PeerInfo),
@@ -101,7 +101,7 @@ func NewDevice(cfg *config.Config) (*Device, error) {
 	}
 
 	// 初始化 TUN 设备
-	if err := device.initializeTUN(); err != nil {
+	if err := device.initializeTUN(tunName); err != nil {
 		return nil, fmt.Errorf("初始化 TUN 设备失败: %v", err)
 	}
 
@@ -146,11 +146,8 @@ func (d *Device) connectToPeers() {
 	d.indexMutex.RUnlock()
 
 	if len(peers) == 0 {
-		fmt.Println("没有需要连接的peers")
 		return
 	}
-
-	fmt.Printf("发现 %d 个需要连接的peers\n", len(peers))
 
 	// 连接到每个peer
 	for _, peer := range peers {
@@ -161,7 +158,6 @@ func (d *Device) connectToPeers() {
 					return
 				default:
 					if err := d.connectToPeer(p); err != nil {
-						fmt.Printf("连接到对端 %s 失败: %v，5秒后重试\n", p.UniqueID, err)
 						time.Sleep(5 * time.Second)
 						continue
 					}
@@ -191,8 +187,8 @@ func (d *Device) Stop() error {
 	}
 
 	// 关闭 TUN 设备
-	if d.tunDevice != nil {
-		d.tunDevice.Close()
+	if d.tun != nil {
+		d.tun.Close()
 	}
 
 	// 等待所有协程结束
@@ -212,7 +208,6 @@ func (d *Device) findPeerByIP(destIP net.IP) *tls.Conn {
 	for peerKey, peer := range d.indexMap {
 		if peer.AllowedIPs.Contains(destIP) {
 			if conn, exists := d.connections[peerKey]; exists {
-				fmt.Printf("找到对端 %s，IP范围: %s\n", peerKey, peer.AllowedIPs.String())
 				return conn
 			}
 		}

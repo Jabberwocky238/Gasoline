@@ -189,13 +189,11 @@ func (d *Device) HandleInbound(msg *ProtocolMessage, tlsConn *tls.Conn) error {
 	} else {
 		// 首先检查目标IP是否在peers的AllowedIPs范围内
 		if !d.IsIPInAllowedRange(ipHeader.DestIP) {
-			// 静默丢弃不在允许范围内的包
 			return nil
 		}
 
 		// 检查是否为广播或多播包，如果是则跳过
 		if IsBroadcastOrMulticast(ipHeader.DestIP) {
-			// 静默跳过广播包
 			return nil
 		}
 
@@ -213,15 +211,10 @@ func (d *Device) HandleInbound(msg *ProtocolMessage, tlsConn *tls.Conn) error {
 		// 更新统计信息
 		metadata.UpdateStats(uint64(len(msg.Data)), 0)
 
-		// 只在调试模式下打印日志
-		if metadata.PacketsIn%100 == 1 { // 每100个包打印一次
-			fmt.Printf("入站数据: %s\n", metadata.String())
-		}
 	}
 
 	// 直接透传原始数据包到TUN设备
 	if err := d.WriteToTUN(msg); err != nil {
-		fmt.Printf("写入TUN设备失败: %v\n", err)
 		return err
 	}
 
@@ -234,7 +227,7 @@ func (d *Device) WriteToTUN(msg *ProtocolMessage) error {
 	ipPacket := msg.Data
 
 	// 写入TUN设备
-	_, err := d.tunDevice.Write([][]byte{ipPacket}, 0)
+	_, err := d.tun.Write([][]byte{ipPacket}, 0)
 	if err != nil {
 		return fmt.Errorf("写入TUN设备失败: %v", err)
 	}
