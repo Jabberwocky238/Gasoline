@@ -101,10 +101,7 @@ func (d *Device) handleTLSConnection(conn net.Conn) {
 	}
 
 	// 更新对端连接信息
-	d.updatePeerConnection(peerKey, tlsConn.RemoteAddr().String(), tlsConn)
-
-	// 握手成功后，将对端加入路由表
-	d.addPeerToRoutingTable(peerKey, tlsConn)
+	d.updatePeerConnection(peerKey, tlsConn)
 }
 
 // performCustomHandshake 执行自定义握手协议
@@ -144,26 +141,12 @@ func (d *Device) performCustomHandshake(tlsConn *tls.Conn) ([]byte, error) {
 }
 
 // updatePeerConnection 更新对端连接信息
-func (d *Device) updatePeerConnection(peerKey, connectionID string, conn *tls.Conn) {
-	d.indexMutex.Lock()
+func (d *Device) updatePeerConnection(peerKey string, conn *tls.Conn) {
 	d.connMutex.Lock()
-	defer d.indexMutex.Unlock()
 	defer d.connMutex.Unlock()
 
 	// 保存TLS连接
 	d.connections[peerKey] = conn
-}
-
-// addPeerToRoutingTable 将对端加入路由表
-func (d *Device) addPeerToRoutingTable(peerKey string, conn *tls.Conn) {
-	d.indexMutex.Lock()
-	defer d.indexMutex.Unlock()
-
-	if peer, exists := d.indexMap[peerKey]; exists {
-		// 这里可以添加实际的路由表操作
-		// 例如：添加路由规则到系统路由表
-		fmt.Printf("对端 %s 已加入路由表，允许的IP: %s\n", peerKey, peer.AllowedIPs)
-	}
 }
 
 // updatePeerDisconnection 更新对端断开连接状态
