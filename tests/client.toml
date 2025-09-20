@@ -1,0 +1,8 @@
+[Interface]
+UniqueID = "uLSvhLaefcFG8EB/jAaioIKz9YhpoJ3JinbK+m+O8Ec="
+Address = "10.0.0.2/32"
+
+[[Peer]]
+UniqueID = "kP3gpdm72QExS/uwfVS/+H88IkMTaMD38GNgNpecyxc="
+AllowedIPs = "10.0.0.1/24"
+Endpoint = "127.0.0.1:51820"
