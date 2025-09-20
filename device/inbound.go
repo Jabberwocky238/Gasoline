@@ -186,15 +186,21 @@ func (d *Device) HandleInbound(msg *ProtocolMessage, tlsConn *tls.Conn) error {
 	ipHeader, err := ParseIPHeader(msg.Data)
 	if err != nil {
 		// 静默跳过无法解析的包，但继续处理
+		fmt.Printf("无法解析入站IP头部: %v\n", err)
 	} else {
+		fmt.Printf("处理入站数据包: %s -> %s (协议: %d)\n",
+			ipHeader.SourceIP.String(), ipHeader.DestIP.String(), ipHeader.Protocol)
+
 		// 首先检查目标IP是否在peers的AllowedIPs范围内
 		if !d.IsIPInAllowedRange(ipHeader.DestIP) {
+			fmt.Printf("入站目标IP %s 不在允许范围内\n", ipHeader.DestIP.String())
 			return nil
 		}
 
-		// 检查是否为广播或多播包，如果是则跳过
+		// 检查是否为广播或多播包
 		if IsBroadcastOrMulticast(ipHeader.DestIP) {
-			return nil
+			fmt.Printf("处理入站广播/多播包: %s\n", ipHeader.DestIP.String())
+			// 广播包需要写入TUN设备，让系统处理
 		}
 
 		// 创建或更新连接元数据
@@ -214,6 +220,7 @@ func (d *Device) HandleInbound(msg *ProtocolMessage, tlsConn *tls.Conn) error {
 	}
 
 	// 直接透传原始数据包到TUN设备
+	fmt.Printf("将数据包写入TUN设备，大小: %d\n", len(msg.Data))
 	if err := d.WriteToTUN(msg); err != nil {
 		return err
 	}

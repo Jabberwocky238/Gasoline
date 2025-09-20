@@ -171,6 +171,11 @@ func IsBroadcastOrMulticast(ip net.IP) bool {
 		if ipv4[0] == 255 && ipv4[1] == 255 && ipv4[2] == 255 && ipv4[3] == 255 {
 			return true
 		}
+		// 检查网络广播地址 (如 10.0.0.255)
+		// 对于 /24 网络，最后一个地址是广播地址
+		if ipv4[3] == 255 {
+			return true
+		}
 	} else if len(ip) == 16 {
 		// 检查IPv6多播地址 (ff00::/8)
 		if ip[0] == 0xff {
@@ -191,6 +196,15 @@ func IsBroadcastOrMulticast(ip net.IP) bool {
 
 // IsIPInAllowedRange 检查IP是否在peers的AllowedIPs范围内
 func (d *Device) IsIPInAllowedRange(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+
+	// 如果是广播或多播包，总是允许
+	if IsBroadcastOrMulticast(ip) {
+		return true
+	}
+
 	d.indexMutex.RLock()
 	defer d.indexMutex.RUnlock()
 
@@ -200,6 +214,15 @@ func (d *Device) IsIPInAllowedRange(ip net.IP) bool {
 			return true
 		}
 	}
+
+	// 如果没有找到匹配的对端，检查是否是本地接口IP
+	// 解析本地接口地址
+	if _, localNet, err := net.ParseCIDR(d.config.Interface.Address); err == nil {
+		if localNet.Contains(ip) {
+			return true
+		}
+	}
+
 	return false
 }
 

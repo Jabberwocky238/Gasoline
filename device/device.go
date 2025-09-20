@@ -204,15 +204,25 @@ func (d *Device) findPeerByIP(destIP net.IP) *tls.Conn {
 	defer d.indexMutex.RUnlock()
 	defer d.connMutex.RUnlock()
 
+	fmt.Printf("查找目标IP %s 对应的对端连接\n", destIP.String())
+	fmt.Printf("当前对端数量: %d\n", len(d.indexMap))
+	fmt.Printf("当前连接数量: %d\n", len(d.connections))
+
 	// 遍历所有对端，检查目的IP是否在允许的IP范围内
 	for peerKey, peer := range d.indexMap {
+		fmt.Printf("检查对端 %s: AllowedIPs=%s\n", peerKey[:8], peer.AllowedIPs.String())
 		if peer.AllowedIPs.Contains(destIP) {
+			fmt.Printf("目标IP %s 在对端 %s 的允许范围内\n", destIP.String(), peerKey[:8])
 			if conn, exists := d.connections[peerKey]; exists {
+				fmt.Printf("找到对端连接: %s\n", peerKey[:8])
 				return conn
+			} else {
+				fmt.Printf("对端 %s 没有活跃连接\n", peerKey[:8])
 			}
 		}
 	}
 
+	fmt.Printf("未找到目标IP %s 对应的对端连接\n", destIP.String())
 	return nil
 }
 

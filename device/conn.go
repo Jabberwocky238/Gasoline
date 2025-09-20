@@ -23,10 +23,6 @@ func (d *Device) handleTUNData() {
 			// 添加超时机制，避免无限阻塞
 			n, err := d.tun.Read(buffers, sizes, 0)
 			if err != nil {
-				// 如果是连接关闭错误，退出循环
-				if err.Error() == "use of closed network connection" {
-					return
-				}
 				// 其他错误继续处理
 				continue
 			}
@@ -58,11 +54,15 @@ func (d *Device) connectToPeer(peer *PeerInfo) error {
 		return fmt.Errorf("对端没有endpoint")
 	}
 
+	fmt.Printf("尝试连接到对端: %s (%s)\n", peer.UniqueID[:8], peer.Endpoint.String())
+
 	// 建立TCP连接
 	conn, err := net.Dial("tcp", peer.Endpoint.String())
 	if err != nil {
 		return fmt.Errorf("连接失败: %v", err)
 	}
+
+	fmt.Printf("TCP连接建立成功: %s\n", peer.Endpoint.String())
 
 	// 创建客户端TLS配置
 	clientTLSConfig := &tls.Config{
@@ -76,24 +76,29 @@ func (d *Device) connectToPeer(peer *PeerInfo) error {
 	tlsConn := tls.Client(conn, clientTLSConfig)
 
 	// TLS握手
+	fmt.Printf("开始TLS握手: %s\n", peer.Endpoint.String())
 	if err := tlsConn.Handshake(); err != nil {
 		tlsConn.Close()
 		return fmt.Errorf("TLS握手失败: %v", err)
 	}
+	fmt.Printf("TLS握手成功: %s\n", peer.Endpoint.String())
 
 	// 执行自定义握手协议
+	fmt.Printf("开始自定义握手: %s\n", peer.Endpoint.String())
 	_, err = d.performClientHandshake(tlsConn)
 	if err != nil {
 		tlsConn.Close()
 		return fmt.Errorf("客户端握手失败: %v", err)
 	}
+	fmt.Printf("自定义握手成功: %s\n", peer.Endpoint.String())
 
 	// 更新对端连接信息
 	d.updatePeerConnection(peer.UniqueID, tlsConn)
 
-	// 开始处理协议消息（这会阻塞直到连接关闭）
-	d.handleProtocolMessages(tlsConn, peer.UniqueID)
+	// 开始处理协议消息（在单独的协程中）
+	go d.handleProtocolMessages(tlsConn, peer.UniqueID)
 
+	fmt.Printf("成功连接到对端: %s\n", peer.UniqueID[:8])
 	return nil
 }
 
