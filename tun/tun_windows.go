@@ -8,7 +8,6 @@ import (
 )
 
 func tunNew(options singTun.Options) (tunIf singTun.Tun, err error) {
-	options.FileDescriptor = 0
 	maxRetry := 3
 	for i := 0; i < maxRetry; i++ {
 		timeBegin := time.Now()

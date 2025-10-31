@@ -11,7 +11,7 @@ import (
 	// "github.com/metacubex/sing/common/ranges"
 )
 
-const DefaultMTU = 1500
+const DefaultMTU = 1460
 
 // Start-Process cmd -Verb RunAs
 func NewTun(tunName string, config *config.Config) (singTun.Tun, error) {
@@ -69,8 +69,8 @@ func NewTun(tunName string, config *config.Config) (singTun.Tun, error) {
 		MTU:          DefaultMTU, // 使用标准MTU大小
 		GSO:          false,      // 在Linux下禁用GSO以避免兼容性问题
 		AutoRoute:    false,      // 禁用自动路由配置，使用手动路由
-		// Inet4Gateway: Inet4Gateway,  // 模仿wireguard行为
-		// Inet6Gateway: Inet6Gateway,  // 模仿wireguard行为
+		// Inet4Gateway: Inet4Gateway, // 模仿wireguard行为
+		// Inet6Gateway: Inet6Gateway, // 模仿wireguard行为
 		// DNSServers: []netip.Addr{},
 		IPRoute2TableIndex:     singTun.DefaultIPRoute2TableIndex,
 		IPRoute2RuleIndex:      singTun.DefaultIPRoute2RuleIndex,
@@ -83,7 +83,7 @@ func NewTun(tunName string, config *config.Config) (singTun.Tun, error) {
 		Inet6LoopbackAddress: []netip.Addr{
 			netip.MustParseAddr("::1"),
 		},
-		StrictRoute:       false,
+		StrictRoute:       true,
 		Inet4RouteAddress: Inet4Address, // 只路由VPN网段的流量，不劫持所有流量
 		Inet6RouteAddress: Inet6Address, // 只路由VPN网段的流量，不劫持所有流量
 		// Inet4RouteExcludeAddress: []netip.Prefix{},
@@ -100,9 +100,9 @@ func NewTun(tunName string, config *config.Config) (singTun.Tun, error) {
 		InterfaceMonitor: interfaceMonitor,
 		// EXP_RecvMsgX:             false,
 		// EXP_SendMsgX:             false,
-		Logger: log.SingLogger,
+		Logger:         log.SingLogger,
+		FileDescriptor: 0,
 	}
-
 	tunIf, err := tunNew(tunOptions)
 	if err != nil {
 		log.Errorln("Error creating tun: %v", err)

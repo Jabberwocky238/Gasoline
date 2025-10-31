@@ -17,7 +17,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	cfg, err := config.ParseConfig("tests/client.toml")
+	cfg, err := config.ParseConfig("samples/client.toml")
 	if err != nil {
 		fmt.Println("Error parsing config:", err)
 		return

@@ -3,11 +3,14 @@
 package tun
 
 import (
+	"net/netip"
+
 	tun "github.com/jabberwocky238/sing-tun"
 )
 
 func tunNew(options tun.Options) (tun.Tun, error) {
-	options.FileDescriptor = 0
+	options.Inet4RouteAddress = []netip.Prefix{} // 有些linux没有默认路由
+	options.Inet6RouteAddress = []netip.Prefix{} // 有些linux没有默认路由
 	return tun.New(options)
 }
 

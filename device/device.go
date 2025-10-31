@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 	"wwww/config"
+	"wwww/transport"
+	"wwww/transport/tcp"
 
 	singTun "github.com/jabberwocky238/sing-tun"
 	"github.com/sirupsen/logrus"
@@ -42,6 +44,10 @@ type Device struct {
 
 	allowedips AllowedIPs
 
+	listener struct {
+		mu     sync.RWMutex
+		server transport.TransportServer
+	}
 	endpoint struct {
 		local net.IP
 	}
@@ -137,19 +143,23 @@ func (device *Device) RoutineListenPort() error {
 	}()
 	device.log.Debugf("Routine: listen port - started")
 
-	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{
-		IP:   net.ParseIP("0.0.0.0"),
-		Port: device.cfg.Interface.ListenPort,
-	})
+	host := "0.0.0.0"
+	port := device.cfg.Interface.ListenPort
+
+	server := tcp.NewTCPServer()
+	err := server.Listen(host, port)
 	if err != nil {
-		device.log.Errorf("Failed to listen on port %d: %v", device.cfg.Interface.ListenPort, err)
+		device.log.Errorf("Failed to listen on port %d: %v", port, err)
 		return err
 	}
 
-	defer listener.Close()
+	device.listener.mu.Lock()
+	device.listener.server = server
+	device.listener.mu.Unlock()
+	defer server.Close()
 
 	for {
-		conn, err := listener.Accept()
+		conn, err := server.Accept()
 		if err != nil {
 			device.log.Errorf("Failed to accept connection: %v", err)
 			continue
@@ -175,8 +185,11 @@ func (device *Device) RoutineListenPort() error {
 				device.log.Errorf("Peer not found for IP %s", targetIp.String())
 				return
 			}
-			peer.conn.tcp = conn.(*net.TCPConn)
-			peer.isConnected = true
+
+			peer.conn.mu.Lock()
+			peer.conn.conn = conn
+			peer.conn.isConnected = true
+			peer.conn.mu.Unlock()
 
 			device.log.Debugf("Connected to peer %s", peer.endpoint.local.String())
 			go peer.RoutineSequentialSender()
@@ -194,7 +207,7 @@ func (device *Device) RoutineBoardcast() error {
 	for {
 		// 对所有peer进行Boardcast
 		for _, peer := range device.peers {
-			if !peer.isConnected {
+			if !peer.conn.isConnected {
 				continue
 			}
 			packet := manualPacket(device.endpoint.local, peer.endpoint.local)
