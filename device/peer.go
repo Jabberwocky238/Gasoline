@@ -2,6 +2,7 @@ package device
 
 import (
 	"container/list"
+	"encoding/binary"
 	"net"
 	"net/netip"
 	"sync"
@@ -143,17 +144,26 @@ func (p *Peer) RoutineSequentialSender() {
 	}()
 	p.device.log.Debugf("Routine: sequential sender - started")
 
-	for packet := range p.queue.inbound.queue {
-		// p.device.log.Debugf("Sending packet to peer %s, length: %d", p.endpoint.local.String(), len(packet))
-		_, err := p.conn.conn.Write(packet)
-		if err != nil {
-			p.device.log.Errorf("Failed to send packet: %v", err)
-			p.conn.conn.Close()
-			p.conn.conn = nil
-			p.conn.isConnected = false
-			return
+	var (
+		buf = make([]byte, 1600)
+	)
+
+	for {
+		select {
+		case packet := <-p.queue.inbound.queue:
+			var msg TransportMsg
+			msg.packet = packet
+			msg.size = uint16(len(packet))
+			actualSize := TransportMsgHeaderSize + len(packet)
+			// 序列化到 msgBytes（复用预分配缓冲）
+			msg.Marshal(buf[:actualSize])
+			// 只复制实际使用的部分
+			_, err := p.conn.conn.Write(buf[:actualSize])
+			if err != nil {
+				p.device.log.Errorf("Failed to send packet: %v", err)
+				return
+			}
 		}
-		// p.device.log.Debugf("Successfully sent packet to peer %s", p.endpoint.local.String())
 	}
 }
 
@@ -163,10 +173,22 @@ func (p *Peer) RoutineSequentialReceiver() {
 	}()
 	p.device.log.Debugf("Routine: sequential receiver - started")
 
-	packet := make([]byte, 1600)
+	var (
+		buf          = make([]byte, 65535) // 接收缓冲，存放未解析的数据
+		bufStart int = 0                   // 未解析数据起始偏移
+		bufEnd   int = 0                   // 未解析数据结束偏移（开区间）
+	)
 
 	for {
-		n, err := p.conn.conn.Read(packet)
+		// 若缓冲末尾空间不足，进行压缩把未解析数据移到起始处
+		if bufEnd == len(buf) && bufStart > 0 {
+			copy(buf[0:], buf[bufStart:bufEnd])
+			bufEnd -= bufStart
+			bufStart = 0
+		}
+
+		// 读取到缓冲末尾的剩余空间
+		n, err := p.conn.conn.Read(buf[bufEnd:])
 		if err != nil {
 			p.device.log.Errorf("Failed to receive packet: %v", err)
 			return
@@ -175,7 +197,43 @@ func (p *Peer) RoutineSequentialReceiver() {
 			p.device.log.Debugf("Received packet with length 0 from peer %s", p.endpoint.local.String())
 			continue
 		}
-		// p.device.log.Debugf("Received packet from peer %s, length: %d, sending to outbound queue", p.endpoint.local.String(), n)
-		p.device.queue.routing.queue <- packet[:n]
+		bufEnd += n
+
+		// 循环解包：尽可能多地从缓冲区解析完整帧
+		for {
+			// 至少需要2字节长度
+			if bufEnd-bufStart < 2 {
+				break
+			}
+			frameLen := int(binary.LittleEndian.Uint16(buf[bufStart : bufStart+2]))
+			// 合法性检查
+			if frameLen < 0 || frameLen > len(buf)-2 {
+				p.device.log.Errorf("Invalid frame length: %d", frameLen)
+				return
+			}
+			// 半包：等待更多数据
+			if bufEnd-bufStart < 2+frameLen {
+				break
+			}
+			// 完整包：解出头部+负载，避免后续缓冲移动影响
+			segmentEnd := bufStart + TransportMsgHeaderSize + frameLen
+			var msg TransportMsg
+			msg.Unmarshal(buf[bufStart:segmentEnd])
+			p.device.queue.routing.queue <- msg.packet
+			// 前进指针
+			bufStart = segmentEnd
+			// 如果完全消耗，重置索引
+			if bufStart == bufEnd {
+				bufStart = 0
+				bufEnd = 0
+				break
+			}
+			// 若已消耗一部分，且剩余数据不多，可适度压缩以腾出空间
+			if bufStart > 0 && (len(buf)-bufEnd) < 1024 {
+				copy(buf[0:], buf[bufStart:bufEnd])
+				bufEnd -= bufStart
+				bufStart = 0
+			}
+		}
 	}
 }

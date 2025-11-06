@@ -5,12 +5,12 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+
 	// "time"
 	"wwww/config"
 	"wwww/transport"
 	"wwww/transport/tcp"
 
-	"github.com/google/gopacket/layers"
 	singTun "github.com/jabberwocky238/sing-tun"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/ipv4"
@@ -60,7 +60,8 @@ type Device struct {
 		routing  *genericQueue // 需要路由的包
 	}
 
-	log *logrus.Logger
+	log      *logrus.Logger
+	debugger *Debugger
 }
 
 func NewDevice(cfg *config.Config, tun singTun.Tun) *Device {
@@ -70,7 +71,7 @@ func NewDevice(cfg *config.Config, tun singTun.Tun) *Device {
 	device.log.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp: true,
 	})
-
+	device.debugger = NewDebugger(device)
 	device.cfg = cfg
 	device.tun = tun
 
@@ -112,6 +113,7 @@ func (device *Device) Start() error {
 		device.log.Errorf("Failed to start tun: %v", err)
 		return err
 	}
+	device.debugger.Start()
 	device.queue.outbound = newGenericQueue()
 	device.queue.routing = newGenericQueue()
 
@@ -228,8 +230,7 @@ func (device *Device) RoutineRoutingPackets() {
 
 	device.log.Debugf("Routine: routing packets - started")
 
-	for {
-		packet := <-device.queue.routing.queue
+	for packet := range device.queue.routing.queue {
 		ipVersion := packet[0] >> 4
 		length := len(packet)
 
@@ -241,13 +242,13 @@ func (device *Device) RoutineRoutingPackets() {
 			if length < ipv4.HeaderLen {
 				continue
 			}
-			showPacket(device.log, packet, layers.LayerTypeIPv4, "routing")
+			device.debugger.v4chan <- packet
 			dst = packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
 		case 6:
 			if length < ipv6.HeaderLen {
 				continue
 			}
-			showPacket(device.log, packet, layers.LayerTypeIPv6, "routing")
+			device.debugger.v6chan <- packet
 			dst = packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
 		default:
 			device.log.Debugf("Received packet with unknown IP version")

@@ -1,5 +1,5 @@
 # Start-Process cmd -Verb RunAs
-
+# Start-Process powershell -Verb RunAs -ArgumentList "-NoExit -Command Set-Location -LiteralPath '$PWD'"
 tuntest:
 	go run cmd/tuntest/main.go
 

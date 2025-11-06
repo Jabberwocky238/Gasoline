@@ -11,7 +11,7 @@ import (
 	// "github.com/metacubex/sing/common/ranges"
 )
 
-const DefaultMTU = 1460
+const DefaultMTU = 1500
 
 // Start-Process cmd -Verb RunAs
 func NewTun(tunName string, config *config.Config) (singTun.Tun, error) {

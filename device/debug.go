@@ -3,12 +3,45 @@ package device
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/sirupsen/logrus"
 )
+
+type Debugger struct {
+	v4chan chan []byte
+	v6chan chan []byte
+
+	device *Device
+}
+
+func NewDebugger(device *Device) *Debugger {
+	return &Debugger{
+		v4chan: make(chan []byte, 1024),
+		v6chan: make(chan []byte, 1024),
+		device: device,
+	}
+}
+
+func (d *Debugger) Start() {
+	go func() {
+		defer func() {
+			d.device.log.Debugf("Debugger - stopped")
+		}()
+		d.device.log.Debugf("Debugger - started")
+		for {
+			select {
+			case packet := <-d.v4chan:
+				showPacket(d.device.log, packet, layers.LayerTypeIPv4, "routing"+strconv.Itoa(len(d.device.queue.routing.queue)))
+			case packet := <-d.v6chan:
+				showPacket(d.device.log, packet, layers.LayerTypeIPv6, "routing"+strconv.Itoa(len(d.device.queue.routing.queue)))
+			}
+		}
+	}()
+}
 
 func showPacket(logger *logrus.Logger, packet []byte, layerType gopacket.LayerType, extraInfo string) {
 	// packet could be IPv4 or IPv6
