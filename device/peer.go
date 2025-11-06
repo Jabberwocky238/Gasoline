@@ -202,24 +202,26 @@ func (p *Peer) RoutineSequentialReceiver() {
 		// 循环解包：尽可能多地从缓冲区解析完整帧
 		for {
 			// 至少需要2字节长度
-			if bufEnd-bufStart < 2 {
+			if bufEnd-bufStart < TransportMsgHeaderSize {
 				break
 			}
-			frameLen := int(binary.LittleEndian.Uint16(buf[bufStart : bufStart+2]))
+			frameLen := int(binary.LittleEndian.Uint16(buf[bufStart : bufStart+TransportMsgHeaderSize]))
 			// 合法性检查
 			if frameLen < 0 || frameLen > len(buf)-2 {
 				p.device.log.Errorf("Invalid frame length: %d", frameLen)
 				return
 			}
 			// 半包：等待更多数据
-			if bufEnd-bufStart < 2+frameLen {
+			if bufEnd-bufStart < TransportMsgHeaderSize+frameLen {
 				break
 			}
 			// 完整包：解出头部+负载，避免后续缓冲移动影响
 			segmentEnd := bufStart + TransportMsgHeaderSize + frameLen
 			var msg TransportMsg
 			msg.Unmarshal(buf[bufStart:segmentEnd])
-			p.device.queue.routing.queue <- msg.packet
+			var packet = make([]byte, len(msg.packet))
+			copy(packet, msg.packet)
+			p.device.queue.routing.queue <- packet
 			// 前进指针
 			bufStart = segmentEnd
 			// 如果完全消耗，重置索引
@@ -229,7 +231,7 @@ func (p *Peer) RoutineSequentialReceiver() {
 				break
 			}
 			// 若已消耗一部分，且剩余数据不多，可适度压缩以腾出空间
-			if bufStart > 0 && (len(buf)-bufEnd) < 1024 {
+			if bufStart > 0 && (len(buf)-bufEnd) < 1600 {
 				copy(buf[0:], buf[bufStart:bufEnd])
 				bufEnd -= bufStart
 				bufStart = 0

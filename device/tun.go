@@ -29,6 +29,7 @@ func (device *Device) RoutineReadFromTUN() {
 
 	for {
 		// read packets
+		buf = make([]byte, 1600)
 		length, readErr := device.tun.Read(buf)
 		if readErr != nil {
 			device.log.Errorf("Failed to read packet from TUN device: %v", readErr)
