@@ -101,27 +101,3 @@ func NewPrivateKey() (sk PrivateKey, err error) {
 	sk.clamp()
 	return
 }
-
-func Encrypt(plaintext []byte, publicKey PublicKey) []byte {
-	// 简单的凯撒编码，位移量为3
-	shift := 3
-	ciphertext := make([]byte, len(plaintext))
-
-	for i, b := range plaintext {
-		ciphertext[i] = byte((int(b) + shift) % 256)
-	}
-
-	return ciphertext
-}
-
-func Decrypt(ciphertext []byte, privateKey PrivateKey) []byte {
-	// 简单的凯撒解码，位移量为3
-	shift := 3
-	plaintext := make([]byte, len(ciphertext))
-
-	for i, b := range ciphertext {
-		plaintext[i] = byte((int(b) - shift + 256) % 256)
-	}
-
-	return plaintext
-}

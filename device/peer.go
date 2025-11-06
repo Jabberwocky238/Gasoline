@@ -141,27 +141,20 @@ func (p *Peer) RoutineSequentialSender() {
 	}()
 	p.device.log.Debugf("Routine: sequential sender - started")
 
-	for {
-		select {
-		case packet, ok := <-p.queue.inbound.queue:
-			if !ok {
-				p.device.log.Debugf("Queue closed, stopping sender")
-				return
-			}
-			// p.device.log.Debugf("Sending packet to peer %s, length: %d", p.endpoint.local.String(), len(packet))
+	for packet := range p.queue.inbound.queue {
+		// p.device.log.Debugf("Sending packet to peer %s, length: %d", p.endpoint.local.String(), len(packet))
 
-			ciphertext := Encrypt(packet, p.key.publicKey)
+		ciphertext := Encrypt(packet, p.key.publicKey)
 
-			_, err := p.conn.conn.Write(ciphertext)
-			if err != nil {
-				p.device.log.Errorf("Failed to send packet: %v", err)
-				p.conn.conn.Close()
-				p.conn.conn = nil
-				p.conn.isConnected = false
-				return
-			}
-			// p.device.log.Debugf("Successfully sent packet to peer %s", p.endpoint.local.String())
+		_, err := p.conn.conn.Write(ciphertext)
+		if err != nil {
+			p.device.log.Errorf("Failed to send packet: %v", err)
+			p.conn.conn.Close()
+			p.conn.conn = nil
+			p.conn.isConnected = false
+			return
 		}
+		// p.device.log.Debugf("Successfully sent packet to peer %s", p.endpoint.local.String())
 	}
 }
 

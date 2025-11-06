@@ -49,15 +49,12 @@ func (device *Device) RoutineWriteToTUN() {
 
 	device.log.Debugf("Routine: TUN writer - started")
 
-	for {
-		select {
-		case packet := <-device.queue.outbound.queue:
-			_, err := device.tun.Write(packet)
-			if err != nil {
-				device.log.Errorf("Failed to write packet to TUN device: %v", err)
-				device.log.Errorf("Packet length: %v", len(packet))
-				continue
-			}
+	for packet := range device.queue.outbound.queue {
+		_, err := device.tun.Write(packet)
+		if err != nil {
+			device.log.Errorf("Failed to write packet to TUN device: %v", err)
+			device.log.Errorf("Packet length: %v", len(packet))
+			continue
 		}
 	}
 }
