@@ -11,29 +11,12 @@ import (
 	"wwww/transport"
 	"wwww/transport/tcp"
 
+	"github.com/google/gopacket/layers"
 	singTun "github.com/jabberwocky238/sing-tun"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
-
-type genericQueue struct {
-	queue chan []byte
-	wg    sync.WaitGroup
-}
-
-func newGenericQueue() *genericQueue {
-	q := &genericQueue{
-		queue: make(chan []byte, 10240),
-		wg:    sync.WaitGroup{},
-	}
-	q.wg.Add(1)
-	go func() {
-		q.wg.Wait()
-		close(q.queue)
-	}()
-	return q
-}
 
 type Device struct {
 	cfg *config.Config
@@ -234,7 +217,7 @@ func (device *Device) RoutineRoutingPackets() {
 
 	device.log.Debugf("Routine: routing packets - started")
 
-	for packet := range device.queue.routing.queue {
+	for packet := range device.queue.routing.c {
 		// routingLenPeak = max(routingLenPeak, len(device.queue.routing.queue))
 		// device.log.Debugf("queue length: %d, peak length: %d", len(device.queue.routing.queue), routingLenPeak)
 		ipVersion := packet[0] >> 4
@@ -248,13 +231,13 @@ func (device *Device) RoutineRoutingPackets() {
 			if length < ipv4.HeaderLen {
 				continue
 			}
-			// device.debugger.v4chan <- packet
+			device.debugger.LogPacket(packet, layers.LayerTypeIPv4)
 			dst = packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
 		case 6:
 			if length < ipv6.HeaderLen {
 				continue
 			}
-			// device.debugger.v6chan <- packet
+			device.debugger.LogPacket(packet, layers.LayerTypeIPv6)
 			dst = packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
 		default:
 			device.log.Debugf("Received packet with unknown IP version")
@@ -262,7 +245,7 @@ func (device *Device) RoutineRoutingPackets() {
 		}
 		// 判断接收者是不是自己
 		if bytes.Equal(dst, device.endpoint.local) {
-			device.queue.outbound.queue <- packet
+			device.queue.outbound.c <- packet
 			continue
 		}
 		// 查找peer
@@ -271,6 +254,6 @@ func (device *Device) RoutineRoutingPackets() {
 			// device.log.Errorf("Peer not found for IP %s", net.IP(dst).String())
 			continue
 		}
-		peer.queue.inbound.queue <- packet
+		peer.queue.inbound.c <- packet
 	}
 }

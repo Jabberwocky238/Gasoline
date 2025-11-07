@@ -160,7 +160,7 @@ func (p *Peer) RoutineSequentialSender() {
 
 	for {
 		select {
-		case packet, ok := <-p.queue.inbound.queue:
+		case packet, ok := <-p.queue.inbound.c:
 			if !ok {
 				// channel已关闭，刷新缓冲区后退出
 				writer.Flush()
@@ -259,7 +259,7 @@ func (p *Peer) RoutineSequentialReceiver() {
 			msg.Unmarshal(buf[bufStart:segmentEnd])
 			var packet = make([]byte, len(msg.packet))
 			copy(packet, msg.packet)
-			p.device.queue.routing.queue <- packet
+			p.device.queue.routing.c <- packet
 			// 前进指针
 			bufStart = segmentEnd
 			// 如果完全消耗，重置索引

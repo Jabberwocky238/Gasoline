@@ -3,7 +3,6 @@ package device
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/google/gopacket"
@@ -12,17 +11,44 @@ import (
 )
 
 type Debugger struct {
-	v4chan chan []byte
-	v6chan chan []byte
+	v4Chan  chan []byte
+	v6Chan  chan []byte
+	msgChan chan string
 
 	device *Device
 }
 
 func NewDebugger(device *Device) *Debugger {
 	return &Debugger{
-		v4chan: make(chan []byte, 1024),
-		v6chan: make(chan []byte, 1024),
+		v4Chan:  make(chan []byte, 1024),
+		v6Chan:  make(chan []byte, 1024),
+		msgChan: make(chan string, 1024),
+
 		device: device,
+	}
+}
+
+func (d *Debugger) LogMsg(msg string) {
+	select {
+	case d.msgChan <- msg:
+	default:
+		// drop message
+	}
+}
+
+func (d *Debugger) LogPacket(packet []byte, layerType gopacket.LayerType) {
+	if layerType == layers.LayerTypeIPv4 {
+		select {
+		case d.v4Chan <- packet:
+		default:
+			// drop packet
+		}
+	} else if layerType == layers.LayerTypeIPv6 {
+		select {
+		case d.v6Chan <- packet:
+		default:
+			// drop packet
+		}
 	}
 }
 
@@ -34,10 +60,12 @@ func (d *Debugger) Start() {
 		d.device.log.Debugf("Debugger - started")
 		for {
 			select {
-			case packet := <-d.v4chan:
-				showPacket(d.device.log, packet, layers.LayerTypeIPv4, "routing:"+strconv.Itoa(len(d.device.queue.routing.queue)))
-			case packet := <-d.v6chan:
-				showPacket(d.device.log, packet, layers.LayerTypeIPv6, "routing:"+strconv.Itoa(len(d.device.queue.routing.queue)))
+			case packet := <-d.v4Chan:
+				showPacket(d.device.log, packet, layers.LayerTypeIPv4, "routing")
+			case packet := <-d.v6Chan:
+				showPacket(d.device.log, packet, layers.LayerTypeIPv6, "routing")
+			case msg := <-d.msgChan:
+				d.device.log.Debugf(msg)
 			}
 		}
 	}()

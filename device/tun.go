@@ -41,7 +41,7 @@ func (device *Device) RoutineReadFromTUN() {
 		// 复制数据包，确保发送到channel的是独立的副本，避免被下次读取覆盖
 		packet := make([]byte, length)
 		copy(packet, buf[:length])
-		device.queue.routing.queue <- packet
+		device.queue.routing.c <- packet
 	}
 }
 
@@ -52,7 +52,7 @@ func (device *Device) RoutineWriteToTUN() {
 
 	device.log.Debugf("Routine: TUN writer - started")
 
-	for packet := range device.queue.outbound.queue {
+	for packet := range device.queue.outbound.c {
 		_, err := device.tun.Write(packet)
 		if err != nil {
 			device.log.Errorf("Failed to write packet to TUN device: %v", err)
