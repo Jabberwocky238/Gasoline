@@ -23,13 +23,12 @@ func (device *Device) RoutineReadFromTUN() {
 
 	device.log.Debugf("Routine: TUN reader - started")
 
-	var (
-		buf = make([]byte, 1600)
-	)
+	var buf = make([]byte, 1600)
 
 	for {
 		// read packets
 		length, readErr := device.tun.Read(buf)
+
 		if readErr != nil {
 			device.log.Errorf("Failed to read packet from TUN device: %v", readErr)
 			continue
@@ -38,10 +37,9 @@ func (device *Device) RoutineReadFromTUN() {
 			device.log.Debugf("Received packet with length 0 from TUN device")
 			continue
 		}
-		// 复制数据包，确保发送到channel的是独立的副本，避免被下次读取覆盖
-		packet := make([]byte, length)
-		copy(packet, buf[:length])
-		device.queue.routing.c <- packet
+		pb := device.pools.GetPacketBuffer()
+		pb.Set(buf[:length])
+		device.queue.routing.c <- pb
 	}
 }
 
@@ -52,11 +50,11 @@ func (device *Device) RoutineWriteToTUN() {
 
 	device.log.Debugf("Routine: TUN writer - started")
 
-	for packet := range device.queue.outbound.c {
-		_, err := device.tun.Write(packet)
+	for pb := range device.queue.outbound.c {
+		_, err := device.tun.Write(pb.CopyPacket())
+		device.pools.PutPacketBuffer(pb)
 		if err != nil {
 			device.log.Errorf("Failed to write packet to TUN device: %v", err)
-			device.log.Errorf("Packet length: %v", len(packet))
 			continue
 		}
 	}

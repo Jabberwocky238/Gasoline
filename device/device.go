@@ -42,6 +42,7 @@ type Device struct {
 		routing  *genericQueue // 需要路由的包
 	}
 
+	pools    *Pools // 内存池
 	log      *logrus.Logger
 	debugger *Debugger
 }
@@ -56,6 +57,7 @@ func NewDevice(cfg *config.Config, tun singTun.Tun) *Device {
 	device.debugger = NewDebugger(device)
 	device.cfg = cfg
 	device.tun = tun
+	device.pools = NewPool()
 
 	var privateKey PrivateKey
 	if err := privateKey.FromBase64(device.cfg.Interface.PrivateKey); err != nil {
@@ -216,43 +218,40 @@ func (device *Device) RoutineRoutingPackets() {
 
 	device.log.Debugf("Routine: routing packets - started")
 
-	for packet := range device.queue.routing.c {
-		// routingLenPeak = max(routingLenPeak, len(device.queue.routing.queue))
-		// device.log.Debugf("queue length: %d, peak length: %d", len(device.queue.routing.queue), routingLenPeak)
-		ipVersion := packet[0] >> 4
-		length := len(packet)
-
+	for pb := range device.queue.routing.c {
 		// lookup peer
 		var peer *Peer
 		var dst []byte
-		switch ipVersion {
+		switch pb.ipVersion {
 		case 4:
-			if length < ipv4.HeaderLen {
+			if pb.length < ipv4.HeaderLen {
 				continue
 			}
-			device.debugger.LogPacket(packet, 4)
-			dst = packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
+			// device.debugger.LogPacket(pb.CopyPacket(), 4)
+			dst = pb.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
 		case 6:
-			if length < ipv6.HeaderLen {
+			if pb.length < ipv6.HeaderLen {
 				continue
 			}
-			device.debugger.LogPacket(packet, 6)
-			dst = packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
+			// device.debugger.LogPacket(pb.CopyPacket(), 6)
+			dst = pb.packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
 		default:
 			device.log.Debugf("Received packet with unknown IP version")
+			device.pools.PutPacketBuffer(pb)
 			continue
 		}
 		// 判断接收者是不是自己
 		if bytes.Equal(dst, device.endpoint.local) {
-			device.queue.outbound.c <- packet
+			device.queue.outbound.c <- pb
 			continue
 		}
 		// 查找peer
 		peer = device.allowedips.Lookup(dst)
 		if peer == nil {
 			// device.log.Errorf("Peer not found for IP %s", net.IP(dst).String())
+			device.pools.PutPacketBuffer(pb)
 			continue
 		}
-		peer.queue.inbound.c <- packet
+		peer.queue.inbound.c <- pb
 	}
 }

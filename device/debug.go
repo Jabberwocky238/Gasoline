@@ -65,7 +65,7 @@ func (d *Debugger) Start() {
 			case packet := <-d.v6Chan:
 				showPacket(d.device.log, packet, layers.LayerTypeIPv6, "routing")
 			case msg := <-d.msgChan:
-				d.device.log.Debugf(msg)
+				d.device.log.Debugf("msg: %s", msg)
 			}
 		}
 	}()

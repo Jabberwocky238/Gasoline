@@ -14,13 +14,13 @@ type genericQueueElementsContainer struct {
 }
 
 type genericQueue struct {
-	c  chan []byte
+	c  chan *PacketBuffer
 	wg sync.WaitGroup
 }
 
 func newGenericQueue() *genericQueue {
 	q := &genericQueue{
-		c:  make(chan []byte, 1024),
+		c:  make(chan *PacketBuffer, 1024),
 		wg: sync.WaitGroup{},
 	}
 	q.wg.Add(1)

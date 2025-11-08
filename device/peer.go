@@ -133,9 +133,6 @@ func (p *Peer) Start() error {
 }
 
 func (p *Peer) Close() error {
-	// 不要立即关闭队列，让RoutineSequentialSender自然结束
-	// p.queue.outbound.wg.Done()
-	// p.queue.inbound.wg.Done()
 	return nil
 }
 
@@ -143,10 +140,6 @@ func (p *Peer) RoutineSequentialSender() {
 	// 使用bufio.Writer来缓冲写入，减少系统调用，让TCP可以批量发送
 	// 缓冲区大小设置为64KB，这样可以让TCP层累积多个数据包后一次性发送
 	writer := bufio.NewWriterSize(p.conn.conn, 64*1024)
-
-	var (
-		buf = make([]byte, 1600)
-	)
 
 	// 使用ticker定期刷新缓冲区，避免数据包延迟太久
 	flushTicker := time.NewTicker(10 * time.Millisecond)
@@ -160,27 +153,16 @@ func (p *Peer) RoutineSequentialSender() {
 
 	for {
 		select {
-		case packet, ok := <-p.queue.inbound.c:
+		case pb, ok := <-p.queue.inbound.c:
 			if !ok {
 				// channel已关闭，刷新缓冲区后退出
 				writer.Flush()
 				return
 			}
-			var msg TransportMsg
-			msg.packet = packet
-			msg.size = uint16(len(packet))
-			actualSize := TransportMsgHeaderSize + len(packet)
-
-			// 如果缓冲区空间不足，需要更大的缓冲区
-			if actualSize > len(buf) {
-				buf = make([]byte, actualSize)
-			}
-
-			// 序列化到 buf
-			msg.Marshal(buf[:actualSize])
 
 			// 写入到缓冲writer，而不是直接写入连接
-			_, err := writer.Write(buf[:actualSize])
+			_, err := writer.Write(pb.CopyMessage())
+			p.device.pools.PutPacketBuffer(pb)
 			if err != nil {
 				p.device.log.Errorf("Failed to send packet: %v", err)
 				return
@@ -240,26 +222,27 @@ func (p *Peer) RoutineSequentialReceiver() {
 		// 循环解包：尽可能多地从缓冲区解析完整帧
 		for {
 			// 至少需要2字节长度
-			if bufEnd-bufStart < TransportMsgHeaderSize {
+			if bufEnd-bufStart < MessageHeaderSize {
 				break
 			}
-			frameLen := int(binary.LittleEndian.Uint16(buf[bufStart : bufStart+TransportMsgHeaderSize]))
+			frameLen := int(binary.LittleEndian.Uint16(buf[bufStart : bufStart+MessageHeaderSize]))
+
 			// 合法性检查
 			if frameLen < 0 || frameLen > len(buf)-2 {
 				p.device.log.Errorf("Invalid frame length: %d", frameLen)
 				return
 			}
 			// 半包：等待更多数据
-			if bufEnd-bufStart < TransportMsgHeaderSize+frameLen {
+			if bufEnd-bufStart < MessageHeaderSize+frameLen {
 				break
 			}
 			// 完整包：解出头部+负载，避免后续缓冲移动影响
-			segmentEnd := bufStart + TransportMsgHeaderSize + frameLen
-			var msg TransportMsg
-			msg.Unmarshal(buf[bufStart:segmentEnd])
-			var packet = make([]byte, len(msg.packet))
-			copy(packet, msg.packet)
-			p.device.queue.routing.c <- packet
+			segmentStart := bufStart + MessageHeaderSize
+			segmentEnd := bufStart + MessageHeaderSize + frameLen
+			segment := buf[segmentStart:segmentEnd]
+			pb := p.device.pools.GetPacketBuffer()
+			pb.Set(segment)
+			p.device.queue.routing.c <- pb
 			// 前进指针
 			bufStart = segmentEnd
 			// 如果完全消耗，重置索引
