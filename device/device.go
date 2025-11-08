@@ -18,9 +18,10 @@ import (
 )
 
 type Device struct {
-	ctx context.Context
-	cfg *config.Config
-	tun singTun.Tun
+	ctx    context.Context
+	cancel context.CancelFunc
+	cfg    *config.Config
+	tun    singTun.Tun
 
 	key struct {
 		privateKey PrivateKey
@@ -51,7 +52,8 @@ type Device struct {
 func NewDevice(cfg *config.Config, tun singTun.Tun) *Device {
 	var err error
 	device := new(Device)
-	device.ctx = context.Background()
+	device.ctx, device.cancel = context.WithCancel(context.Background())
+
 	device.log = logrus.New()
 	device.log.SetLevel(logrus.DebugLevel)
 	device.log.SetFormatter(&logrus.TextFormatter{
@@ -105,7 +107,8 @@ func (device *Device) Start() error {
 		device.log.Errorf("Failed to start tun: %v", err)
 		return err
 	}
-	device.debugger.Start()
+
+	go device.debugger.Start() // lifetime listen to device
 	device.queue.outbound = newGenericQueue()
 	device.queue.routing = newGenericQueue()
 
@@ -118,12 +121,13 @@ func (device *Device) Start() error {
 	}
 
 	if device.cfg.Interface.ListenPort > 0 {
-		go device.RoutineListenPort()
+		go device.RoutineListenPort() // lifetime listen to device.listener.server
 	}
 
-	go device.RoutineRoutingPackets()
-	go device.RoutineReadFromTUN()
-	go device.RoutineWriteToTUN()
+	go device.RoutineRoutingPackets() // lifetime listen to device.queue.routing
+	go device.RoutineReadFromTUN()    // lifetime listen to device.tun
+	go device.RoutineWriteToTUN()     // lifetime listen to device.tun and device.queue.outbound
+
 	// go device.RoutineBoardcast()
 
 	return nil
@@ -133,6 +137,9 @@ func (device *Device) Close() {
 	device.log.Debugf("Closing device")
 	device.queue.outbound.wg.Done()
 	device.queue.routing.wg.Done()
+	device.listener.server.Close()
+	device.cancel()
+	device.tun.Close()
 }
 
 func (device *Device) RoutineListenPort() error {
@@ -150,14 +157,7 @@ func (device *Device) RoutineListenPort() error {
 		return err
 	}
 
-	defer device.listener.server.Close()
-
-	for {
-		conn, err := device.listener.server.Accept()
-		if err != nil {
-			device.log.Errorf("Failed to accept connection: %v", err)
-			continue
-		}
+	for conn := range device.listener.server.Accept() {
 		device.log.Debugf("Accepted connection from %s", conn.RemoteAddr().String())
 		go func() {
 			handshake := NewHandshake(conn, device, nil)
@@ -182,6 +182,7 @@ func (device *Device) RoutineListenPort() error {
 			go peer.RoutineSequentialReceiver()
 		}()
 	}
+	return nil
 }
 
 // func (device *Device) RoutineBoardcast() error {

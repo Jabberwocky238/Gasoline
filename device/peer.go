@@ -1,7 +1,6 @@
 package device
 
 import (
-	"bufio"
 	"container/list"
 	"encoding/binary"
 	"net"
@@ -141,53 +140,47 @@ func (p *Peer) Close() error {
 }
 
 func (p *Peer) RoutineSequentialSender() {
-	// 使用bufio.Writer来缓冲写入，减少系统调用，让TCP可以批量发送
-	// 缓冲区大小设置为64KB，这样可以让TCP层累积多个数据包后一次性发送
-	writer := bufio.NewWriterSize(p.conn.conn, 64*1024)
+	// 关键优化：分离读取和写入，避免TCP Write阻塞影响channel读取
+	// 问题根源：TCP Write()在高延迟下会阻塞（当发送缓冲区满时等待ACK）
+	// 这导致整个发送循环停止，进而阻塞inbound队列，最终阻塞路由线程
+	//
+	// 解决方案：使用goroutine异步写入，主循环只负责从channel读取
+	// 即使写入goroutine阻塞在TCP Write()，主循环仍可继续读取，避免阻塞上游
 
-	// 使用ticker定期刷新缓冲区，避免数据包延迟太久
-	flushTicker := time.NewTicker(10 * time.Millisecond)
-	defer func() {
-		flushTicker.Stop()
-		// 确保退出时刷新缓冲区，避免丢失数据
-		writer.Flush()
-		p.device.log.Debugf("Routine: sequential sender - stopped")
-	}()
-	p.device.log.Debugf("Routine: sequential sender - started")
+	// 使用大容量的写入队列（4096），允许TCP层在高延迟下积累更多数据
+	// 这个队列大小应该足够大，以应对高延迟场景下的TCP窗口限制
+	writeChan := make(chan *PacketBuffer, 4096)
 
-	for {
-		select {
-		case pb, ok := <-p.queue.inbound.c:
-			if !ok {
-				// channel已关闭，刷新缓冲区后退出
-				writer.Flush()
-				return
-			}
-
-			// 写入到缓冲writer，而不是直接写入连接
-			_, err := writer.Write(pb.CopyMessage())
+	// 启动写入goroutine，处理实际的TCP写入
+	// 这个goroutine可能会阻塞在TCP Write()，但不影响主循环
+	writeDone := make(chan struct{})
+	go func() {
+		defer close(writeDone)
+		for pb := range writeChan {
+			_, err := p.conn.conn.Write(pb.message)
 			p.device.pools.PutPacketBuffer(pb)
 			if err != nil {
 				p.device.log.Errorf("Failed to send packet: %v", err)
 				return
 			}
-
-			// 如果缓冲区接近满，立即刷新以触发发送
-			if writer.Buffered() > 32*1024 {
-				if err := writer.Flush(); err != nil {
-					p.device.log.Errorf("Failed to flush buffer: %v", err)
-					return
-				}
-			}
-		case <-flushTicker.C:
-			// 定期刷新缓冲区，确保数据包不会延迟太久
-			if writer.Buffered() > 0 {
-				if err := writer.Flush(); err != nil {
-					p.device.log.Errorf("Failed to flush buffer: %v", err)
-					return
-				}
-			}
 		}
+	}()
+
+	p.device.log.Debugf("Routine: sequential sender - started")
+	defer func() {
+		close(writeChan)
+		<-writeDone // 等待写入goroutine完成
+		p.device.log.Debugf("Routine: sequential sender - stopped")
+	}()
+
+	for pb := range p.queue.inbound.c {
+		// 阻塞写入到writeChan（不是非阻塞）
+		// 如果writeChan满了，说明写入goroutine可能阻塞在TCP Write()
+		// 这种情况下，主循环也会阻塞，但这是可以接受的：
+		// 1. 4096的容量足够大，可以缓冲大量数据
+		// 2. 阻塞在这里比阻塞在TCP Write()更好，因为至少数据还在队列中
+		// 3. 一旦TCP有空间，写入goroutine会继续，主循环也会继续
+		writeChan <- pb
 	}
 }
 

@@ -24,7 +24,7 @@ func TestTCP(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		srvConn, _ := server.Accept()
+		srvConn, _ := <-server.Accept()
 		if srvConn != nil {
 			n, err = srvConn.Read(buf)
 			if err != nil {

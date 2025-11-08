@@ -61,9 +61,14 @@ type PacketBuffer struct {
 }
 
 func (p *PacketBuffer) Set(buf []byte) {
-	p.length = len(buf)
-	binary.LittleEndian.PutUint16(p.buffer[:MessageHeaderSize], uint16(p.length))
 	copy(p.buffer[MessageHeaderSize:], buf)
+	p.length = len(buf)
+	p.Make()
+}
+
+// buffer 和 length 已经设置好了
+func (p *PacketBuffer) Make() {
+	binary.LittleEndian.PutUint16(p.buffer[:MessageHeaderSize], uint16(p.length))
 	p.packet = p.buffer[MessageHeaderSize : MessageHeaderSize+p.length]
 	p.message = p.buffer[:MessageHeaderSize+p.length]
 	p.ipVersion = int(p.packet[0] >> 4)
@@ -93,11 +98,18 @@ func NewPool() *Pools {
 }
 
 func (p *Pools) GetPacketBuffer() *PacketBuffer {
-	return p.PacketBuffers.Get().(*PacketBuffer)
+	pb := p.PacketBuffers.Get().(*PacketBuffer)
+	pb.length = 0
+	pb.packet = pb.buffer[MessageHeaderSize:]
+	pb.message = pb.buffer[:]
+	pb.ipVersion = 0
+	return pb
 }
 
 func (p *Pools) PutPacketBuffer(pb *PacketBuffer) {
 	pb.length = 0
 	pb.packet = nil
+	pb.message = nil
+	pb.ipVersion = 0
 	p.PacketBuffers.Put(pb)
 }

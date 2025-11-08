@@ -4,7 +4,7 @@ import "net"
 
 type TransportServer interface {
 	Listen(host string, port int) error
-	Accept() (TransportConn, error)
+	Accept() <-chan TransportConn
 	Close() error
 }
 

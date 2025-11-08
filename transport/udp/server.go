@@ -1,7 +1,6 @@
 package udp
 
 import (
-	"errors"
 	"net"
 
 	"context"
@@ -63,16 +62,12 @@ func (t *UDPServer) acceptLoop(laddr *net.UDPAddr) {
 	}
 }
 
-func (t *UDPServer) Accept() (transport.TransportConn, error) {
-	select {
-	case conn := <-t.connChan:
-		return conn, nil
-	case <-t.ctx.Done():
-		return nil, errors.New("server closed")
-	}
+func (t *UDPServer) Accept() <-chan transport.TransportConn {
+	return t.connChan
 }
 
 func (t *UDPServer) Close() error {
 	t.cancel()
+	close(t.connChan)
 	return t.bind.Close()
 }

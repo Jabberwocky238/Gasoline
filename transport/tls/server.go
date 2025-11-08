@@ -3,7 +3,6 @@ package tls
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
 
@@ -74,16 +73,12 @@ func (t *TLSServer) acceptLoop() (net.Conn, error) {
 	}
 }
 
-func (t *TLSServer) Accept() (transport.TransportConn, error) {
-	select {
-	case conn := <-t.connChan:
-		return conn, nil
-	case <-t.ctx.Done():
-		return nil, errors.New("server closed")
-	}
+func (t *TLSServer) Accept() <-chan transport.TransportConn {
+	return t.connChan
 }
 
 func (t *TLSServer) Close() error {
+	close(t.connChan)
 	if t.cancel != nil {
 		t.cancel()
 	}

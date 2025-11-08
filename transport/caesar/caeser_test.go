@@ -16,7 +16,7 @@ func TestCaesar(t *testing.T) {
 		t.Logf("debugHook: %s, bytein: %v, byteout: %v", msg, string(bytein), string(byteout))
 	}
 	server := NewCaesarServer(3, tcp.NewTCPServer(), &debugHook)
-	err := server.Listen("127.0.0.1", 8080)
+	err := server.Listen("127.0.0.1", 18080)
 	defer server.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -29,18 +29,16 @@ func TestCaesar(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		srvConn, _ := server.Accept()
-		if srvConn != nil {
-			n, err = srvConn.Read(buf)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Logf("received data: %s", string(buf[:n]))
+		srvConn := <-server.Accept()
+		n, err = srvConn.Read(buf)
+		if err != nil {
+			t.Fatal(err)
 		}
+		t.Logf("received data: %s", string(buf[:n]))
 	}()
 
 	client := NewCaesarClient(3, tcp.NewTCPClient(), &debugHook)
-	cltConn, err := client.Dial("127.0.0.1:8080")
+	cltConn, err := client.Dial("127.0.0.1:18080")
 	if err != nil {
 		t.Fatal(err)
 	}

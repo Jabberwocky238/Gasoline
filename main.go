@@ -7,11 +7,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/sirupsen/logrus"
-
 	"wwww/config"
 	"wwww/device"
 	"wwww/tun"
+
+	"github.com/sirupsen/logrus"
 )
 
 func main() {

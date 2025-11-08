@@ -26,14 +26,13 @@ func TestUDP1(t *testing.T) {
 
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		srvConn, _ := server.Accept()
-		if srvConn != nil {
-			n, err = srvConn.Read(buf)
+		for conn := range server.Accept() {
+			n, err := conn.Read(buf)
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Logf("received data: %s", string(buf[:n]))
+			wg.Done()
 		}
 	}()
 
@@ -76,13 +75,8 @@ func TestUDP2(t *testing.T) {
 	// 循环 Accept 连接并放入 connChan
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		defer close(connChan)
-		for i := 0; i < 2; i++ {
-			srvConn, _ := server.Accept()
-			if srvConn != nil {
-				connChan <- srvConn
-			}
+		for conn := range server.Accept() {
+			connChan <- conn
 		}
 	}()
 

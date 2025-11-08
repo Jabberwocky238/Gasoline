@@ -23,22 +23,23 @@ func (device *Device) RoutineReadFromTUN() {
 
 	device.log.Debugf("Routine: TUN reader - started")
 
-	var buf = make([]byte, 1600)
-
 	for {
 		// read packets
-		length, readErr := device.tun.Read(buf)
-
+		pb := device.pools.GetPacketBuffer()
+		length, readErr := device.tun.Read(pb.packet)
 		if readErr != nil {
+			if device.ctx.Err() != nil {
+				break
+			}
 			device.log.Errorf("Failed to read packet from TUN device: %v", readErr)
-			continue
+			break
 		}
 		if length < 1 {
 			device.log.Debugf("Received packet with length 0 from TUN device")
 			continue
 		}
-		pb := device.pools.GetPacketBuffer()
-		pb.Set(buf[:length])
+		pb.length = length
+		pb.Make()
 		device.queue.routing.c <- pb
 	}
 }
@@ -55,7 +56,7 @@ func (device *Device) RoutineWriteToTUN() {
 		device.pools.PutPacketBuffer(pb)
 		if err != nil {
 			device.log.Errorf("Failed to write packet to TUN device: %v", err)
-			continue
+			break
 		}
 	}
 }

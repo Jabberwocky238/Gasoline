@@ -3,7 +3,11 @@ package device
 import (
 	"fmt"
 	"net"
+	"os"
 	"time"
+
+	"context"
+	"runtime/pprof"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -16,6 +20,7 @@ type Debugger struct {
 	msgChan chan string
 
 	device *Device
+	ctx    context.Context
 }
 
 func NewDebugger(device *Device) *Debugger {
@@ -25,6 +30,7 @@ func NewDebugger(device *Device) *Debugger {
 		msgChan: make(chan string, 1024),
 
 		device: device,
+		ctx:    device.ctx,
 	}
 }
 
@@ -53,22 +59,36 @@ func (d *Debugger) LogPacket(packet []byte, layerType int) {
 }
 
 func (d *Debugger) Start() {
-	go func() {
-		defer func() {
-			d.device.log.Debugf("Debugger - stopped")
-		}()
-		d.device.log.Debugf("Debugger - started")
-		for {
-			select {
-			case packet := <-d.v4Chan:
-				showPacket(d.device.log, packet, layers.LayerTypeIPv4, "routing")
-			case packet := <-d.v6Chan:
-				showPacket(d.device.log, packet, layers.LayerTypeIPv6, "routing")
-			case msg := <-d.msgChan:
-				d.device.log.Debugf("msg: %s", msg)
-			}
-		}
+	//采样cpu运行状态
+	fcpu, err1 := os.Create("cpu.prof")
+	fmem, err2 := os.Create("mem.prof")
+	if err1 != nil || err2 != nil {
+		d.device.log.Errorf("Failed to create cpu or mem profile: %v, %v", err1, err2)
+		return
+	}
+	pprof.StartCPUProfile(fcpu)
+	d.device.log.Debugf("Debugger - started")
+
+	defer func() {
+		d.device.log.Debugf("Debugger - stopped")
+		pprof.StopCPUProfile()
+		pprof.WriteHeapProfile(fmem)
+		fcpu.Close()
+		fmem.Close()
 	}()
+
+	for {
+		select {
+		case packet := <-d.v4Chan:
+			showPacket(d.device.log, packet, layers.LayerTypeIPv4, "routing")
+		case packet := <-d.v6Chan:
+			showPacket(d.device.log, packet, layers.LayerTypeIPv6, "routing")
+		case msg := <-d.msgChan:
+			d.device.log.Debugf("msg: %s", msg)
+		case <-d.ctx.Done():
+			return
+		}
+	}
 }
 
 func showPacket(logger *logrus.Logger, packet []byte, layerType gopacket.LayerType, extraInfo string) {
