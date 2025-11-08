@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"time"
 
 	// "time"
 	"wwww/config"
@@ -125,7 +126,7 @@ func (device *Device) Start() error {
 	}
 
 	go device.RoutineRoutingPackets() // lifetime listen to device.queue.routing
-	go device.RoutineReadFromTUN()    // lifetime listen to device.tun
+	go device.RoutineReadFromTUN(0)   // lifetime listen to device.tun
 	go device.RoutineWriteToTUN()     // lifetime listen to device.tun and device.queue.outbound
 
 	// go device.RoutineBoardcast()
@@ -212,10 +213,6 @@ func (device *Device) RoutineListenPort() error {
 // 	}
 // }
 
-var (
-	routingLenPeak = 0
-)
-
 func (device *Device) RoutineRoutingPackets() {
 	defer func() {
 		device.log.Debugf("Routine: routing packets - stopped")
@@ -223,28 +220,49 @@ func (device *Device) RoutineRoutingPackets() {
 
 	device.log.Debugf("Routine: routing packets - started")
 
+	var (
+		ticker               = time.NewTicker(1 * time.Second)
+		correctPacketCount   = 0
+		incorrectPacketCount = 0
+	)
+
+	defer ticker.Stop()
+
+	go func() {
+		for range ticker.C {
+			device.log.Debugf("Routine: routing packets - correct: %d, incorrect: %d", correctPacketCount, incorrectPacketCount)
+		}
+	}()
+
 	for pb := range device.queue.routing.c {
 		// lookup peer
 		var peer *Peer
 		var dst []byte
-		switch pb.ipVersion {
+		switch pb.IpVersion() {
 		case 4:
 			if pb.length < ipv4.HeaderLen {
+				incorrectPacketCount++
+				device.pools.PutPacketBuffer(pb)
 				continue
 			}
 			// device.debugger.LogPacket(pb.CopyPacket(), 4)
-			dst = pb.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
+			dst = pb.Packet()[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
 		case 6:
 			if pb.length < ipv6.HeaderLen {
+				incorrectPacketCount++
+				device.pools.PutPacketBuffer(pb)
 				continue
 			}
 			// device.debugger.LogPacket(pb.CopyPacket(), 6)
-			dst = pb.packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
+			dst = pb.Packet()[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
 		default:
 			device.log.Debugf("Received packet with unknown IP version")
 			device.pools.PutPacketBuffer(pb)
+			incorrectPacketCount++
 			continue
 		}
+
+		correctPacketCount++
 		// 判断接收者是不是自己
 		if bytes.Equal(dst, device.endpoint.local) {
 			device.queue.outbound.c <- pb
@@ -255,6 +273,7 @@ func (device *Device) RoutineRoutingPackets() {
 		if peer == nil {
 			// device.log.Errorf("Peer not found for IP %s", net.IP(dst).String())
 			device.pools.PutPacketBuffer(pb)
+			incorrectPacketCount++
 			continue
 		}
 		peer.queue.inbound.c <- pb

@@ -53,37 +53,25 @@ const (
 
 type PacketBuffer struct {
 	buffer [MessageHeaderSize + MaxMtu]byte // transport message bufferF
-
-	packet    []byte // raw packet
-	message   []byte // Encoded transport message
-	length    int
-	ipVersion int
+	length int
 }
 
-func (p *PacketBuffer) Set(buf []byte) {
+func (p *PacketBuffer) SetPacket(buf []byte) {
 	copy(p.buffer[MessageHeaderSize:], buf)
 	p.length = len(buf)
-	p.Make()
-}
-
-// buffer 和 length 已经设置好了
-func (p *PacketBuffer) Make() {
 	binary.LittleEndian.PutUint16(p.buffer[:MessageHeaderSize], uint16(p.length))
-	p.packet = p.buffer[MessageHeaderSize : MessageHeaderSize+p.length]
-	p.message = p.buffer[:MessageHeaderSize+p.length]
-	p.ipVersion = int(p.packet[0] >> 4)
 }
 
-func (p *PacketBuffer) CopyPacket() []byte {
-	copyBuf := make([]byte, p.length)
-	copy(copyBuf, p.packet)
-	return copyBuf
+func (p *PacketBuffer) Packet() []byte {
+	return p.buffer[MessageHeaderSize : MessageHeaderSize+p.length]
 }
 
-func (p *PacketBuffer) CopyMessage() []byte {
-	copyBuf := make([]byte, p.length+MessageHeaderSize)
-	copy(copyBuf, p.message)
-	return copyBuf
+func (p *PacketBuffer) Message() []byte {
+	return p.buffer[:MessageHeaderSize+p.length]
+}
+
+func (p *PacketBuffer) IpVersion() int {
+	return int(p.Packet()[0] >> 4)
 }
 
 func NewPool() *Pools {
@@ -91,7 +79,6 @@ func NewPool() *Pools {
 		PacketBuffers: NewWaitPool(0, func() any {
 			return &PacketBuffer{
 				length: 0,
-				packet: nil,
 			}
 		}),
 	}
@@ -100,16 +87,10 @@ func NewPool() *Pools {
 func (p *Pools) GetPacketBuffer() *PacketBuffer {
 	pb := p.PacketBuffers.Get().(*PacketBuffer)
 	pb.length = 0
-	pb.packet = pb.buffer[MessageHeaderSize:]
-	pb.message = pb.buffer[:]
-	pb.ipVersion = 0
 	return pb
 }
 
 func (p *Pools) PutPacketBuffer(pb *PacketBuffer) {
 	pb.length = 0
-	pb.packet = nil
-	pb.message = nil
-	pb.ipVersion = 0
 	p.PacketBuffers.Put(pb)
 }

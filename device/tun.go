@@ -16,21 +16,19 @@ const (
 	IPv6offsetDst           = IPv6offsetSrc + net.IPv6len
 )
 
-func (device *Device) RoutineReadFromTUN() {
+func (device *Device) RoutineReadFromTUN(i int) {
 	defer func() {
-		device.log.Debugf("Routine: TUN reader - stopped")
+		device.log.Debugf("Routine: TUN reader - %d - stopped", i)
 	}()
 
-	device.log.Debugf("Routine: TUN reader - started")
+	device.log.Debugf("Routine: TUN reader - %d - started", i)
+
+	buf := make([]byte, 1600)
 
 	for {
 		// read packets
-		pb := device.pools.GetPacketBuffer()
-		length, readErr := device.tun.Read(pb.packet)
+		length, readErr := device.tun.Read(buf)
 		if readErr != nil {
-			if device.ctx.Err() != nil {
-				break
-			}
 			device.log.Errorf("Failed to read packet from TUN device: %v", readErr)
 			break
 		}
@@ -38,8 +36,8 @@ func (device *Device) RoutineReadFromTUN() {
 			device.log.Debugf("Received packet with length 0 from TUN device")
 			continue
 		}
-		pb.length = length
-		pb.Make()
+		pb := device.pools.GetPacketBuffer()
+		pb.SetPacket(buf[:length])
 		device.queue.routing.c <- pb
 	}
 }
@@ -52,7 +50,7 @@ func (device *Device) RoutineWriteToTUN() {
 	device.log.Debugf("Routine: TUN writer - started")
 
 	for pb := range device.queue.outbound.c {
-		_, err := device.tun.Write(pb.CopyPacket())
+		_, err := device.tun.Write(pb.Packet())
 		device.pools.PutPacketBuffer(pb)
 		if err != nil {
 			device.log.Errorf("Failed to write packet to TUN device: %v", err)
