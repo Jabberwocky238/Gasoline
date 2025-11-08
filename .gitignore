@@ -2,3 +2,5 @@
 
 build/
 _device/
+
+*.prof
