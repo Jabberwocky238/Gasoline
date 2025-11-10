@@ -55,9 +55,12 @@ func (d *Device) NewPeer(cfg *config.Peer) (*Peer, error) {
 
 	// transport client
 	peer.conn.mu.Lock()
-	peer.conn.client, err = NewClient(d.ctx, "tcp")
+	peer.conn.client, err = config.FromConfigClient(d.ctx, d.cfg.Transports)
 	if err != nil {
-		return nil, err
+		if peer.conn.client == nil {
+			return nil, err
+		}
+		d.log.Warnf("Failed to create client: %v", err)
 	}
 	peer.conn.handshake = nil
 	peer.conn.isConnected = false

@@ -64,10 +64,13 @@ func NewDevice(cfg *config.Config, tun singTun.Tun) *Device {
 	device.cfg = cfg
 	device.tun = tun
 	device.pools = NewPool()
-	device.listener.server, err = NewServer(device.ctx, "tcp")
+	device.listener.server, err = config.FromConfigServer(device.ctx, device.cfg.Transports)
 	if err != nil {
-		device.log.Errorf("Failed to create server: %v", err)
-		return nil
+		if device.listener.server == nil {
+			device.log.Errorf("Failed to create server: %v", err)
+			return nil
+		}
+		device.log.Warnf("Failed to create server: %v", err)
 	}
 
 	var privateKey PrivateKey

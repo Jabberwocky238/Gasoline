@@ -31,5 +31,11 @@ c2:
 c3:
 	go run main.go -f ./samples/client3.toml -n tun0
 
+sc:
+	go run main.go -f ./samples/servercfg.toml -n tun1
+
+cc:
+	go run main.go -f ./samples/clientcfg.toml -n tun0
+
 # go run main.go -f samples/client2.toml -n tun1
 # go run main.go -f samples/client3.toml -n tun0

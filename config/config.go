@@ -14,8 +14,16 @@ type Peer struct {
 	Endpoint   string `toml:"Endpoint"`
 }
 
+type Transport struct {
+	ID   string                 `toml:"ID"`
+	Type string                 `toml:"Type"`
+	Main bool                   `toml:"Main"`
+	Cfg  map[string]interface{} `toml:"Cfg"`
+}
+
 // Config 主配置结构体
 type Config struct {
-	Interface Interface `toml:"Interface"`
-	Peers     []Peer    `toml:"Peer"`
+	Interface  Interface   `toml:"Interface"`
+	Peers      []Peer      `toml:"Peer"`
+	Transports []Transport `toml:"Transport"`
 }

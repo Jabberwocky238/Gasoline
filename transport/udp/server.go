@@ -3,7 +3,6 @@ package udp
 import (
 	"net"
 
-	"context"
 	"wwww/transport"
 )
 
@@ -11,8 +10,6 @@ type UDPServer struct {
 	bind     *net.UDPConn
 	connChan chan transport.TransportConn
 	conns    map[string]*UDPConn // 使用地址字符串作为键
-	ctx      context.Context
-	cancel   context.CancelFunc
 }
 
 func NewUDPServer() *UDPServer {
@@ -23,9 +20,6 @@ func NewUDPServer() *UDPServer {
 }
 
 func (t *UDPServer) Listen(host string, port int) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.ctx = ctx
-	t.cancel = cancel
 	addr := net.UDPAddr{IP: net.ParseIP(host), Port: port}
 	listener, err := net.ListenUDP("udp", &addr)
 	if err != nil {
@@ -41,11 +35,7 @@ func (t *UDPServer) acceptLoop(laddr *net.UDPAddr) {
 	for {
 		n, raddr, err := t.bind.ReadFromUDP(buf)
 		if err != nil {
-			// 如果连接已关闭，退出循环
-			if t.ctx.Err() != nil {
-				return
-			}
-			continue
+			break
 		}
 		// 使用地址字符串作为键，确保相同地址的客户端使用同一个连接
 		addrKey := raddr.String()
@@ -67,7 +57,6 @@ func (t *UDPServer) Accept() <-chan transport.TransportConn {
 }
 
 func (t *UDPServer) Close() error {
-	t.cancel()
 	close(t.connChan)
 	return t.bind.Close()
 }

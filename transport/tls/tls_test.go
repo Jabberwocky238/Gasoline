@@ -1,7 +1,6 @@
 package tls
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -41,7 +40,6 @@ func generateSelfSignedCert(host string) (certPEM, keyPEM []byte, err error) {
 func TestTLS(t *testing.T) {
 	host := "127.0.0.1"
 	port := 18081
-	ctx := context.Background()
 
 	certPEM, keyPEM, err := generateSelfSignedCert(host)
 	if err != nil {
@@ -58,8 +56,7 @@ func TestTLS(t *testing.T) {
 		CertPEM: certPEM,
 		KeyPEM:  keyPEM,
 	}
-	sctx := context.WithValue(ctx, "cfg", serverCfg)
-	server := NewTLSServer(sctx)
+	server := NewTLSServer(serverCfg)
 	if err := server.Listen(host, port); err != nil {
 		t.Fatal(err)
 	}
@@ -72,8 +69,7 @@ func TestTLS(t *testing.T) {
 			RootCAs:    roots,
 		},
 	}
-	cctx := context.WithValue(ctx, "cfg", clientCfg)
-	client := NewTLSClient(cctx)
+	client := NewTLSClient(clientCfg)
 
 	// 服务端：简单 echo 处理
 	go func() {

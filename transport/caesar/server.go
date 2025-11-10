@@ -6,15 +6,16 @@ import (
 
 type CaesarServer struct {
 	upstream transport.TransportServer
-	shift    int
+	cfg      *CaesarConfig
 
-	debugHook *func(bytein, byteout []byte, msg string)
-	connChan  chan transport.TransportConn
+	debugHook func(bytein, byteout []byte, msg string)
+
+	connChan chan transport.TransportConn
 }
 
-func NewCaesarServer(shift int, upstream transport.TransportServer, debugHook *func(bytein, byteout []byte, msg string)) *CaesarServer {
+func NewCaesarServer(cfg *CaesarConfig, upstream transport.TransportServer, debugHook func(bytein, byteout []byte, msg string)) *CaesarServer {
 	return &CaesarServer{
-		shift:     shift,
+		cfg:       cfg,
 		upstream:  upstream,
 		debugHook: debugHook,
 		connChan:  make(chan transport.TransportConn),
@@ -30,8 +31,8 @@ func (t *CaesarServer) Accept() <-chan transport.TransportConn {
 		for conn := range t.upstream.Accept() {
 			t.connChan <- &CaesarConn{
 				conn:      conn,
-				debugHook: *t.debugHook,
-				shift:     t.shift,
+				debugHook: t.debugHook,
+				shift:     t.cfg.Shift,
 			}
 		}
 	}()

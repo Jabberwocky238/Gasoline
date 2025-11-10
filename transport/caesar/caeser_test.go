@@ -15,7 +15,8 @@ func TestCaesar(t *testing.T) {
 		// print the bytein and byteout in hex
 		t.Logf("debugHook: %s, bytein: %v, byteout: %v", msg, string(bytein), string(byteout))
 	}
-	server := NewCaesarServer(3, tcp.NewTCPServer(), &debugHook)
+	cfg := &CaesarConfig{Shift: 3}
+	server := NewCaesarServer(cfg, tcp.NewTCPServer(), debugHook)
 	err := server.Listen("127.0.0.1", 18080)
 	defer server.Close()
 	if err != nil {
@@ -37,7 +38,7 @@ func TestCaesar(t *testing.T) {
 		t.Logf("received data: %s", string(buf[:n]))
 	}()
 
-	client := NewCaesarClient(3, tcp.NewTCPClient(), &debugHook)
+	client := NewCaesarClient(cfg, tcp.NewTCPClient(), debugHook)
 	cltConn, err := client.Dial("127.0.0.1:18080")
 	if err != nil {
 		t.Fatal(err)

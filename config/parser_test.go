@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseConfigFromString(t *testing.T) {
@@ -235,4 +237,36 @@ func TestRealConfigFiles(t *testing.T) {
 			t.Errorf("Client配置中的Peer%d应该有endpoint，但为空", i+1)
 		}
 	}
+}
+
+func TestTransportConfig(t *testing.T) {
+	transports := []Transport{
+		{
+			ID:   "tcp-id",
+			Type: "tcp",
+		},
+		{
+			ID:   "caesar-id",
+			Type: "caesar",
+			Cfg:  map[string]interface{}{"Shift": int64(3), "Underlying": "tcp-id"},
+		},
+	}
+
+	cfgRaw := `
+[[Transport]]
+ID = "tcp-id"
+Type = "tcp"
+
+[[Transport]]
+ID = "caesar-id"
+Type = "caesar"
+Cfg = {Shift = 3, Underlying = "tcp-id"}
+`
+
+	parsed, err := ParseConfigFromString(cfgRaw)
+	if err != nil {
+		t.Fatalf("解析配置失败: %v", err)
+	}
+
+	assert.Equal(t, parsed.Transports, transports)
 }

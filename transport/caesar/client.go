@@ -5,14 +5,18 @@ import (
 )
 
 type CaesarClient struct {
-	shift    int
+	cfg      *CaesarConfig
 	upstream transport.TransportClient
 
-	debugHook *func(bytein, byteout []byte, msg string)
+	debugHook func(bytein, byteout []byte, msg string)
 }
 
-func NewCaesarClient(shift int, upstream transport.TransportClient, debugHook *func(bytein, byteout []byte, msg string)) *CaesarClient {
-	return &CaesarClient{shift: shift, upstream: upstream, debugHook: debugHook}
+func NewCaesarClient(cfg *CaesarConfig, upstream transport.TransportClient, debugHook func(bytein, byteout []byte, msg string)) *CaesarClient {
+	return &CaesarClient{
+		cfg:       cfg,
+		upstream:  upstream,
+		debugHook: debugHook,
+	}
 }
 
 func (t *CaesarClient) Dial(endpoint string) (transport.TransportConn, error) {
@@ -22,7 +26,11 @@ func (t *CaesarClient) Dial(endpoint string) (transport.TransportConn, error) {
 	}
 	return &CaesarConn{
 		conn:      conn,
-		debugHook: *t.debugHook,
-		shift:     t.shift,
+		debugHook: t.debugHook,
+		shift:     t.cfg.Shift,
 	}, nil
+}
+
+func (t *CaesarClient) Close() error {
+	return t.upstream.Close()
 }

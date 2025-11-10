@@ -1,7 +1,6 @@
 package tls
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -14,26 +13,16 @@ type TLSServer struct {
 	listener net.Listener
 
 	connChan chan transport.TransportConn
-	ctx      context.Context
-	cancel   context.CancelFunc
 }
 
-func NewTLSServer(ctx context.Context) *TLSServer {
-	ctx, cancel := context.WithCancel(ctx)
-	cfg := ctx.Value("cfg").(*TLSServerConfig)
+func NewTLSServer(cfg *TLSServerConfig) *TLSServer {
 	return &TLSServer{
 		cfg:      cfg,
-		ctx:      ctx,
-		cancel:   cancel,
 		connChan: make(chan transport.TransportConn, 1024),
 	}
 }
 
 func (t *TLSServer) Listen(host string, port int) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.ctx = ctx
-	t.cancel = cancel
-
 	baseListener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		return err
@@ -79,9 +68,6 @@ func (t *TLSServer) Accept() <-chan transport.TransportConn {
 
 func (t *TLSServer) Close() error {
 	close(t.connChan)
-	if t.cancel != nil {
-		t.cancel()
-	}
 	if t.listener != nil {
 		return t.listener.Close()
 	}
