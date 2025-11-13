@@ -2,6 +2,7 @@ package trojan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -84,18 +85,25 @@ type TrojanServer struct {
 	underlay  transport.TransportServer
 	connChan  chan transport.TransportConn
 	ctx       context.Context
-	cancel    context.CancelFunc
 	redir     *Redirector
 	redirAddr net.Addr
 }
 
 func (s *TrojanServer) Close() error {
-	s.cancel()
 	return s.underlay.Close()
 }
 
 func (s *TrojanServer) acceptLoop() {
-	for conn := range s.underlay.Accept() {
+	for {
+		conn, err := s.underlay.Accept()
+		if err != nil {
+			select {
+			case <-s.ctx.Done():
+				return
+			default:
+				continue
+			}
+		}
 		go func(conn transport.TransportConn) {
 			rewindConn := NewRewindConn(conn)
 			rewindConn.SetBufferSize(128)
@@ -123,19 +131,28 @@ func (s *TrojanServer) acceptLoop() {
 	}
 }
 
-func (s *TrojanServer) Accept() <-chan transport.TransportConn {
-	return s.connChan
+func (s *TrojanServer) Accept() (transport.TransportConn, error) {
+	select {
+	case conn, ok := <-s.connChan:
+		if !ok {
+			return nil, errors.New("upstream closed")
+		}
+		return conn, nil
+	case <-s.ctx.Done():
+		return nil, s.ctx.Err()
+	}
 }
 
 func (s *TrojanServer) Listen(host string, port int) error {
+	if err := s.underlay.Listen(host, port); err != nil {
+		return err
+	}
 	go s.acceptLoop()
-	return s.underlay.Listen(host, port)
+	return nil
 }
 
 func NewServer(ctx context.Context, underlay transport.TransportServer, cfg *ServerConfig) transport.TransportServer {
 	auth := NewAuthenticator(ctx, cfg.Passwords)
-	ctx, cancel := context.WithCancel(ctx)
-
 	if cfg.RedirectHost == "" {
 		cfg.RedirectHost = "127.0.0.1"
 	}
@@ -150,7 +167,6 @@ func NewServer(ctx context.Context, underlay transport.TransportServer, cfg *Ser
 		redirAddr: redirAddrAddr,
 		connChan:  make(chan transport.TransportConn, 32),
 		ctx:       ctx,
-		cancel:    cancel,
 		redir:     NewRedirector(ctx),
 	}
 

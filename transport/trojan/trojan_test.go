@@ -49,21 +49,24 @@ func TestTrojanTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// 等待服务器启动完成
+	time.Sleep(100 * time.Millisecond)
+
 	buf := make([]byte, 1024)
 	n := 0
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		conn := <-s.Accept()
-		if conn == nil {
-			return
+		conn, err := s.Accept()
+		if err != nil {
+			t.Fatal(err)
 		}
 		defer conn.Close()
 		n, err = conn.Read(buf)
 	}()
 
-	conn1, err := c.Dial("localhost:18080")
+	conn1, err := c.Dial("127.0.0.1:18080")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,9 +106,9 @@ func TestTrojanTCP(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		conn := <-s.Accept()
-		if conn == nil {
-			return
+		conn, err := s.Accept()
+		if err != nil {
+			t.Fatal(err)
 		}
 		defer conn.Close()
 		n, err = conn.Read(buf)

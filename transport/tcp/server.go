@@ -1,6 +1,7 @@
 package tcp
 
 import (
+	"errors"
 	"fmt"
 	"net"
 
@@ -45,8 +46,14 @@ func (t *TCPServer) acceptLoop() (net.Conn, error) {
 	}
 }
 
-func (t *TCPServer) Accept() <-chan transport.TransportConn {
-	return t.connChan
+func (t *TCPServer) Accept() (transport.TransportConn, error) {
+	select {
+	case conn, ok := <-t.connChan:
+		if !ok {
+			return nil, errors.New("upstream closed")
+		}
+		return conn, nil
+	}
 }
 
 func (t *TCPServer) Close() error {

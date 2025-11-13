@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"testing"
+	"wwww/transport/tls"
 	"wwww/transport/trojan"
 
 	"github.com/BurntSushi/toml"
@@ -25,10 +26,11 @@ Cfg.Shift = 3
 [[Transport]]
 ID = "trojan-id"
 Type = "trojan"
-Main = true
 Underlying = "caesar-id"
 Cfg.Password = "password"
 Cfg.Passwords = ["passwordss"]
+Cfg.RedirectHost = "127.0.0.1"
+Cfg.RedirectPort = 8080
 
 [[Transport]]
 ID = "tls-id"
@@ -59,11 +61,12 @@ Cfg.SNI = true
 		{
 			ID:         "trojan-id",
 			Type:       "trojan",
-			Main:       true,
 			Underlying: "caesar-id",
 			Cfg: map[string]any{
-				"Password":  "password",
-				"Passwords": []interface{}{"passwordss"}, // []string
+				"Password":     "password",
+				"Passwords":    []interface{}{"passwordss"}, // []string
+				"RedirectHost": "127.0.0.1",
+				"RedirectPort": int64(8080),
 			},
 		},
 		{
@@ -81,18 +84,18 @@ Cfg.SNI = true
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	server, err := FromConfigServer(ctx, parsed.Transports)
+	server, err := FromConfigServer(ctx, parsed.Transports, "trojan-id")
 	if err != nil {
 		t.Fatalf("创建服务器失败: %v", err)
 	}
-	client, err := FromConfigClient(ctx, parsed.Transports)
+	client, err := FromConfigClient(ctx, parsed.Transports, "tls-id")
 	if err != nil {
 		t.Fatalf("创建客户端失败: %v", err)
 	}
 	if _, ok := server.(*trojan.TrojanServer); !ok {
 		t.Fatalf("创建服务器失败: %v", err)
 	}
-	if _, ok := client.(*trojan.TrojanClient); !ok {
+	if _, ok := client.(*tls.TLSClient); !ok {
 		t.Fatalf("创建客户端失败: %v", err)
 	}
 }

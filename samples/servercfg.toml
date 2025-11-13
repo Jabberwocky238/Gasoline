@@ -6,6 +6,7 @@ Address = "10.0.0.1/24"
 [[Peer]]
 PublicKey = "14nWLDf+tZ6CXwC6WNEq/VWsbOoSr/yggbyRX17goEM="
 AllowedIPs = "10.0.0.2/32"
+TransportID = "caesarID"
 
 [[Transport]]
 ID = "tcpID"
@@ -14,5 +15,5 @@ Type = "tcp"
 [[Transport]]
 ID = "caesarID"
 Type = "caesar"
-Main = true
-Cfg = {Shift = 3, Underlying = "tcpID"}
+Underlying = "tcpID"
+Cfg.Shift = 3

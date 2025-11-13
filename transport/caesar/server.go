@@ -26,17 +26,16 @@ func (t *CaesarServer) Listen(host string, port int) error {
 	return t.upstream.Listen(host, port)
 }
 
-func (t *CaesarServer) Accept() <-chan transport.TransportConn {
-	go func() {
-		for conn := range t.upstream.Accept() {
-			t.connChan <- &CaesarConn{
-				conn:      conn,
-				debugHook: t.debugHook,
-				shift:     t.cfg.Shift,
-			}
-		}
-	}()
-	return t.connChan
+func (t *CaesarServer) Accept() (transport.TransportConn, error) {
+	conn, err := t.upstream.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &CaesarConn{
+		conn:      conn,
+		debugHook: t.debugHook,
+		shift:     t.cfg.Shift,
+	}, nil
 }
 
 func (t *CaesarServer) Close() error {

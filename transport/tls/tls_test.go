@@ -48,7 +48,10 @@ func TestTLSWithFile(t *testing.T) {
 
 	// 服务端：简单 echo 处理
 	go func() {
-		srvConn := <-server.Accept()
+		srvConn, err := server.Accept()
+		if err != nil {
+			t.Fatal(err)
+		}
 		defer srvConn.Close()
 		// echo：从自身读并写回
 		buf := make([]byte, 1024)
@@ -106,9 +109,9 @@ func TestTLSWithSelfSignedCert(t *testing.T) {
 
 	// 服务端：简单 echo 处理
 	go func() {
-		srvConn := <-server.Accept()
-		if srvConn == nil {
-			return
+		srvConn, err := server.Accept()
+		if err != nil {
+			t.Fatal(err)
 		}
 		defer srvConn.Close()
 		// echo：从自身读并写回

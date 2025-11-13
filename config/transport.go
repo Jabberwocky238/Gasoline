@@ -14,7 +14,7 @@ import (
 
 // makeDependenciesList 递归构建依赖列表，确保无依赖的项在前，有依赖的项在后
 // 返回的列表顺序：无依赖的配置 -> 有依赖的配置（最上层在前）
-func makeDependenciesList(cfgMap map[string]Transport, cfgs []Transport) ([]Transport, error) {
+func makeDependenciesList(cfgMap map[string]Transport, cfgID string) ([]Transport, error) {
 	result := make([]Transport, 0)
 	visited := make(map[string]bool)
 	processing := make(map[string]bool) // 用于检测循环依赖
@@ -53,27 +53,34 @@ func makeDependenciesList(cfgMap map[string]Transport, cfgs []Transport) ([]Tran
 		visited[cfgID] = true
 
 		// 添加到结果列表（依赖已处理，现在可以安全添加）
-		result = append(result, cfg)
+		// 深拷贝 Cfg map 以避免共享引用
+		cfgCopy := cfg
+		if cfg.Cfg != nil {
+			cfgCopy.Cfg = make(map[string]interface{})
+			for k, v := range cfg.Cfg {
+				cfgCopy.Cfg[k] = v
+			}
+		}
+		result = append(result, cfgCopy)
 		return nil
 	}
 
 	// 处理所有配置
-	for _, cfg := range cfgs {
-		if err := processCfg(cfg.ID); err != nil {
-			return nil, err
-		}
+	if err := processCfg(cfgID); err != nil {
+		return nil, err
 	}
 
 	return result, nil
 }
 
-func FromConfigServer(ctx context.Context, cfgs []Transport) (transport.TransportServer, error) {
+func FromConfigServer(ctx context.Context, cfgs []Transport, cfgID string) (transport.TransportServer, error) {
 	cfgMap := make(map[string]Transport)
 	serverMap := make(map[string]transport.TransportServer)
 	for _, cfg := range cfgs {
 		cfgMap[cfg.ID] = cfg
 	}
-	dependenciesList, err := makeDependenciesList(cfgMap, cfgs)
+	// 只处理目标 cfgID 及其依赖，而不是所有配置
+	dependenciesList, err := makeDependenciesList(cfgMap, cfgID)
 	if err != nil {
 		return nil, err
 	}
@@ -145,20 +152,21 @@ func FromConfigServer(ctx context.Context, cfgs []Transport) (transport.Transpor
 
 	// 返回主transport
 	for _, cfg := range cfgs {
-		if cfg.Main {
+		if cfg.ID == cfgID {
 			return serverMap[cfg.ID], nil
 		}
 	}
 	return tcp.NewTCPServer(), fmt.Errorf("no main transport found, using tcp as fallback")
 }
 
-func FromConfigClient(ctx context.Context, cfgs []Transport) (transport.TransportClient, error) {
+func FromConfigClient(ctx context.Context, cfgs []Transport, cfgID string) (transport.TransportClient, error) {
 	cfgMap := make(map[string]Transport)
 	clientMap := make(map[string]transport.TransportClient)
 	for _, cfg := range cfgs {
 		cfgMap[cfg.ID] = cfg
 	}
-	dependenciesList, err := makeDependenciesList(cfgMap, cfgs)
+	// 只处理目标 cfgID 及其依赖，而不是所有配置
+	dependenciesList, err := makeDependenciesList(cfgMap, cfgID)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +214,7 @@ func FromConfigClient(ctx context.Context, cfgs []Transport) (transport.Transpor
 
 	// 返回主transport
 	for _, cfg := range cfgs {
-		if cfg.Main {
+		if cfg.ID == cfgID {
 			return clientMap[cfg.ID], nil
 		}
 	}
@@ -216,20 +224,43 @@ func FromConfigClient(ctx context.Context, cfgs []Transport) (transport.Transpor
 // ------------------------------------------------------------
 // ------------------------------------------------------------
 
+func getCfgKeys(cfg map[string]interface{}) []string {
+	keys := make([]string, 0, len(cfg))
+	for k := range cfg {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 func parseTrojanServerConfig(cfg Transport) (*trojan.ServerConfig, error) {
-	trojanCfg := &trojan.ServerConfig{}
-	if passwdList, ok := cfg.Cfg["Passwords"]; ok {
-		switch v := passwdList.(type) {
+	trojanCfg := new(trojan.ServerConfig)
+
+	// 处理 Passwords，支持 []string 和 []interface{} 两种类型
+	if passwordsVal, ok := cfg.Cfg["Passwords"]; ok {
+		switch v := passwordsVal.(type) {
 		case []string:
+			// TOML 解析器可能直接解析为 []string
 			trojanCfg.Passwords = v
 		case []interface{}:
+			// TOML 解析器也可能解析为 []interface{}
 			for _, item := range v {
 				if str, ok := item.(string); ok {
 					trojanCfg.Passwords = append(trojanCfg.Passwords, str)
 				}
 			}
+		default:
+			// 添加调试信息：如果类型不匹配，记录实际类型
+			return nil, fmt.Errorf("passwords type error: expected []string or []interface{}, got %T (value: %v)", passwordsVal, passwordsVal)
 		}
+	} else {
+		// 添加调试信息：如果 Passwords 不存在，记录 Cfg 的所有键
+		keys := make([]string, 0, len(cfg.Cfg))
+		for k := range cfg.Cfg {
+			keys = append(keys, k)
+		}
+		return nil, fmt.Errorf("passwords not found in Cfg, available keys: %v", keys)
 	}
+
 	if len(trojanCfg.Passwords) == 0 {
 		return nil, fmt.Errorf("passwords is empty")
 	}

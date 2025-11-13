@@ -18,10 +18,9 @@ const (
 
 func (device *Device) RoutineReadFromTUN(i int) {
 	defer func() {
-		device.log.Debugf("Routine: TUN reader - %d - stopped", i)
+		log.Debugf("Routine: TUN reader - %d - stopped", i)
 	}()
-
-	device.log.Debugf("Routine: TUN reader - %d - started", i)
+	log.Debugf("Routine: TUN reader - %d - started", i)
 
 	buf := make([]byte, 1600)
 
@@ -29,11 +28,11 @@ func (device *Device) RoutineReadFromTUN(i int) {
 		// read packets
 		length, readErr := device.tun.Read(buf)
 		if readErr != nil {
-			device.log.Errorf("Failed to read packet from TUN device: %v", readErr)
+			log.Errorf("Failed to read packet from TUN device: %v", readErr)
 			break
 		}
 		if length < 1 {
-			device.log.Debugf("Received packet with length 0 from TUN device")
+			log.Debugf("Received packet with length 0 from TUN device")
 			continue
 		}
 		pb := device.pools.GetPacketBuffer()
@@ -44,16 +43,16 @@ func (device *Device) RoutineReadFromTUN(i int) {
 
 func (device *Device) RoutineWriteToTUN() {
 	defer func() {
-		device.log.Debugf("Routine: TUN writer - stopped")
+		log.Debugf("Routine: TUN writer - stopped")
 	}()
 
-	device.log.Debugf("Routine: TUN writer - started")
+	log.Debugf("Routine: TUN writer - started")
 
 	for pb := range device.queue.outbound.c {
 		_, err := device.tun.Write(pb.Packet())
 		device.pools.PutPacketBuffer(pb)
 		if err != nil {
-			device.log.Errorf("Failed to write packet to TUN device: %v", err)
+			log.Errorf("Failed to write packet to TUN device: %v", err)
 			break
 		}
 	}

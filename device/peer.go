@@ -55,12 +55,12 @@ func (d *Device) NewPeer(cfg *config.Peer) (*Peer, error) {
 
 	// transport client
 	peer.conn.mu.Lock()
-	peer.conn.client, err = config.FromConfigClient(d.ctx, d.cfg.Transports)
+	peer.conn.client, err = config.FromConfigClient(d.ctx, d.cfg.Transports, cfg.TransportID)
 	if err != nil {
 		if peer.conn.client == nil {
 			return nil, err
 		}
-		d.log.Warnf("Failed to create client: %v", err)
+		log.Warnf("Failed to create client: %v", err)
 	}
 	peer.conn.handshake = nil
 	peer.conn.isConnected = false
@@ -74,14 +74,14 @@ func (d *Device) NewPeer(cfg *config.Peer) (*Peer, error) {
 			return nil, err
 		}
 		peer.endpoint.remote = &endpoint
-		d.log.Debugf("New peer endpoint %s", endpoint.String())
+		log.Debugf("New peer endpoint %s", endpoint.String())
 	}
 	allowedIPs, err := netip.ParsePrefix(cfg.AllowedIPs)
 	if err != nil {
 		return nil, err
 	}
 	localIp := allowedIPs.Addr().AsSlice()
-	d.log.Debugf("New peer local IP %s", net.IP(localIp).String())
+	log.Debugf("New peer local IP %s", net.IP(localIp).String())
 	peer.endpoint.local = localIp
 	peer.allowedIPs = allowedIPs
 	peer.device = d
@@ -91,7 +91,7 @@ func (d *Device) NewPeer(cfg *config.Peer) (*Peer, error) {
 func (p *Peer) Start() error {
 	p.queue.inbound = newGenericQueue()
 	if p.endpoint.remote != nil {
-		p.device.log.Debugf("Start connecting to peer endpoint %s", p.endpoint.remote.String())
+		log.Debugf("Start connecting to peer endpoint %s", p.endpoint.remote.String())
 		// tcp connection
 		p.conn.mu.Lock()
 
@@ -101,19 +101,19 @@ func (p *Peer) Start() error {
 
 		maxRetries := 3
 		for i := 0; i < maxRetries; i++ {
-			p.device.log.Debugf("Attempting connection %d/%d to %s", i+1, maxRetries, p.endpoint.remote.String())
+			log.Debugf("Attempting connection %d/%d to %s", i+1, maxRetries, p.endpoint.remote.String())
 			conn, err = p.conn.client.Dial(p.endpoint.remote.String())
 			if err == nil {
 				break
 			}
-			p.device.log.Warnf("Connection attempt %d failed: %v", i+1, err)
+			log.Warnf("Connection attempt %d failed: %v", i+1, err)
 			if i < maxRetries-1 {
 				time.Sleep(2 * time.Second) // 重试前等待2秒
 			}
 		}
 
 		if err != nil {
-			p.device.log.Errorf("Failed to connect to peer endpoint %s after %d attempts: %v", p.endpoint.remote.String(), maxRetries, err)
+			log.Errorf("Failed to connect to peer endpoint %s after %d attempts: %v", p.endpoint.remote.String(), maxRetries, err)
 			p.conn.mu.Unlock()
 			return err
 		}
@@ -122,7 +122,7 @@ func (p *Peer) Start() error {
 		handshake := NewHandshake(conn, p.device, p)
 		err = handshake.SendHandshake()
 		if err != nil {
-			p.device.log.Errorf("Failed to send handshake to peer endpoint %s: %v", p.endpoint.remote.String(), err)
+			log.Errorf("Failed to send handshake to peer endpoint %s: %v", p.endpoint.remote.String(), err)
 			p.conn.mu.Unlock()
 			return err
 		}
@@ -130,7 +130,7 @@ func (p *Peer) Start() error {
 		p.conn.conn = conn
 		p.conn.isConnected = true
 		p.conn.mu.Unlock()
-		p.device.log.Debugf("Connected to peer endpoint %s", p.endpoint.remote.String())
+		log.Debugf("Connected to peer endpoint %s", p.endpoint.remote.String())
 
 		go p.RoutineSequentialSender()
 		go p.RoutineSequentialReceiver()
@@ -143,16 +143,16 @@ func (p *Peer) Close() error {
 }
 
 func (p *Peer) RoutineSequentialSender() {
-	p.device.log.Debugf("Routine: sequential sender - started")
+	log.Debugf("Routine: sequential sender - started")
 	defer func() {
-		p.device.log.Debugf("Routine: sequential sender - stopped")
+		log.Debugf("Routine: sequential sender - stopped")
 	}()
 
 	for pb := range p.queue.inbound.c {
 		_, err := p.conn.conn.Write(pb.Message())
 		p.device.pools.PutPacketBuffer(pb)
 		if err != nil {
-			p.device.log.Errorf("Failed to send packet: %v", err)
+			log.Errorf("Failed to send packet: %v", err)
 			return
 		}
 	}
@@ -160,9 +160,9 @@ func (p *Peer) RoutineSequentialSender() {
 
 func (p *Peer) RoutineSequentialReceiver() {
 	defer func() {
-		p.device.log.Debugf("Routine: sequential receiver - stopped")
+		log.Debugf("Routine: sequential receiver - stopped")
 	}()
-	p.device.log.Debugf("Routine: sequential receiver - started")
+	log.Debugf("Routine: sequential receiver - started")
 
 	var (
 		buf          = make([]byte, 65535) // 接收缓冲，存放未解析的数据
@@ -181,11 +181,11 @@ func (p *Peer) RoutineSequentialReceiver() {
 		// 读取到缓冲末尾的剩余空间
 		n, err := p.conn.conn.Read(buf[bufEnd:])
 		if err != nil {
-			p.device.log.Errorf("Failed to receive packet: %v", err)
+			log.Errorf("Failed to receive packet: %v", err)
 			return
 		}
 		if n == 0 {
-			p.device.log.Debugf("Received packet with length 0 from peer %s", p.endpoint.local.String())
+			log.Debugf("Received packet with length 0 from peer %s", p.endpoint.local.String())
 			continue
 		}
 		bufEnd += n
@@ -200,7 +200,7 @@ func (p *Peer) RoutineSequentialReceiver() {
 
 			// 合法性检查
 			if frameLen < 0 || frameLen > len(buf)-2 {
-				p.device.log.Errorf("Invalid frame length: %d", frameLen)
+				log.Errorf("Invalid frame length: %d", frameLen)
 				return
 			}
 			// 半包：等待更多数据

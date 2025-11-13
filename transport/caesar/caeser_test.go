@@ -30,7 +30,10 @@ func TestCaesar(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		srvConn := <-server.Accept()
+		srvConn, err := server.Accept()
+		if err != nil {
+			t.Fatal(err)
+		}
 		n, err = srvConn.Read(buf)
 		if err != nil {
 			t.Fatal(err)

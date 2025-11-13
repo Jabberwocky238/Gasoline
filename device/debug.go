@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/sirupsen/logrus"
 )
 
 type Debugger struct {
@@ -63,14 +62,14 @@ func (d *Debugger) Start() {
 	fcpu, err1 := os.Create("cpu.prof")
 	fmem, err2 := os.Create("mem.prof")
 	if err1 != nil || err2 != nil {
-		d.device.log.Errorf("Failed to create cpu or mem profile: %v, %v", err1, err2)
+		log.Errorf("Failed to create cpu or mem profile: %v, %v", err1, err2)
 		return
 	}
 	pprof.StartCPUProfile(fcpu)
-	d.device.log.Debugf("Debugger - started")
+	log.Debugf("Debugger - started")
 
 	defer func() {
-		d.device.log.Debugf("Debugger - stopped")
+		log.Debugf("Debugger - stopped")
 		pprof.StopCPUProfile()
 		pprof.WriteHeapProfile(fmem)
 		fcpu.Close()
@@ -80,23 +79,23 @@ func (d *Debugger) Start() {
 	for {
 		select {
 		case packet := <-d.v4Chan:
-			showPacket(d.device.log, packet, layers.LayerTypeIPv4, "routing")
+			showPacket(packet, layers.LayerTypeIPv4, "routing")
 		case packet := <-d.v6Chan:
-			showPacket(d.device.log, packet, layers.LayerTypeIPv6, "routing")
+			showPacket(packet, layers.LayerTypeIPv6, "routing")
 		case msg := <-d.msgChan:
-			d.device.log.Debugf("msg: %s", msg)
+			log.Debugf("msg: %s", msg)
 		case <-d.ctx.Done():
 			return
 		}
 	}
 }
 
-func showPacket(logger *logrus.Logger, packet []byte, layerType gopacket.LayerType, extraInfo string) {
+func showPacket(packet []byte, layerType gopacket.LayerType, extraInfo string) {
 	// packet could be IPv4 or IPv6
 	packetObj := gopacket.NewPacket(packet, layerType, gopacket.Default)
 	layer := packetObj.Layer(layerType)
 	if layer == nil {
-		logger.Debugf("Packet is nil")
+		log.Debugf("Packet is nil")
 		return
 	}
 	// try to extract transport (UDP/TCP) ports
@@ -116,16 +115,16 @@ func showPacket(logger *logrus.Logger, packet []byte, layerType gopacket.LayerTy
 		to := ipv4Layer.DstIP.String()
 		protocol := ipv4Layer.Protocol.String()
 		length := ipv4Layer.Length
-		logger.Debugf("%s, IPv4: %s -> %s, %s, length: %d%s", extraInfo, from, to, protocol, length, portInfo)
+		log.Debugf("%s, IPv4: %s -> %s, %s, length: %d%s", extraInfo, from, to, protocol, length, portInfo)
 	case layers.LayerTypeIPv6:
 		ipv6Layer := layer.(*layers.IPv6)
 		from := ipv6Layer.SrcIP.String()
 		to := ipv6Layer.DstIP.String()
 		protocol := ipv6Layer.NextHeader
 		length := ipv6Layer.Length
-		logger.Debugf("%s, IPv6: %s -> %s, %s, length: %d%s", extraInfo, from, to, protocol, length, portInfo)
+		log.Debugf("%s, IPv6: %s -> %s, %s, length: %d%s", extraInfo, from, to, protocol, length, portInfo)
 	default:
-		logger.Debugf("Unknown packet: %v", layer)
+		log.Debugf("Unknown packet: %v", layer)
 	}
 }
 

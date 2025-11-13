@@ -13,8 +13,6 @@ type TLSServer struct {
 	tlsCfg *tls.Config
 
 	listener net.Listener
-
-	connChan chan transport.TransportConn
 }
 
 func NewTLSServer(cfg *TLSServerConfig) *TLSServer {
@@ -23,9 +21,8 @@ func NewTLSServer(cfg *TLSServerConfig) *TLSServer {
 		return nil
 	}
 	return &TLSServer{
-		cfg:      cfg,
-		tlsCfg:   tlsCfg,
-		connChan: make(chan transport.TransportConn, 1024),
+		cfg:    cfg,
+		tlsCfg: tlsCfg,
 	}
 }
 
@@ -35,26 +32,18 @@ func (t *TLSServer) Listen(host string, port int) error {
 		return err
 	}
 	t.listener = tls.NewListener(baseListener, t.tlsCfg)
-	go t.acceptLoop()
 	return nil
 }
 
-func (t *TLSServer) acceptLoop() (net.Conn, error) {
-	for {
-		conn, err := t.listener.Accept()
-		if err != nil {
-			return nil, err
-		}
-		t.connChan <- conn
+func (t *TLSServer) Accept() (transport.TransportConn, error) {
+	conn, err := t.listener.Accept()
+	if err != nil {
+		return nil, err
 	}
-}
-
-func (t *TLSServer) Accept() <-chan transport.TransportConn {
-	return t.connChan
+	return conn, nil
 }
 
 func (t *TLSServer) Close() error {
-	close(t.connChan)
 	if t.listener != nil {
 		return t.listener.Close()
 	}
