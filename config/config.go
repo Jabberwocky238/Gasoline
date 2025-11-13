@@ -15,10 +15,11 @@ type Peer struct {
 }
 
 type Transport struct {
-	ID   string                 `toml:"ID"`
-	Type string                 `toml:"Type"`
-	Main bool                   `toml:"Main"`
-	Cfg  map[string]interface{} `toml:"Cfg"`
+	ID         string                 `toml:"ID"`
+	Type       string                 `toml:"Type"`
+	Main       bool                   `toml:"Main,omitempty"`
+	Underlying string                 `toml:"Underlying,omitempty"`
+	Cfg        map[string]interface{} `toml:"Cfg,omitempty"`
 }
 
 // Config 主配置结构体

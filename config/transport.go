@@ -42,11 +42,9 @@ func makeDependenciesList(cfgMap map[string]Transport, cfgs []Transport) ([]Tran
 		processing[cfgID] = true
 
 		// 先处理依赖（递归）
-		if underlying, ok := cfg.Cfg["Underlying"]; ok && underlying != nil {
-			if underlyingStr, ok := underlying.(string); ok && underlyingStr != "" {
-				if err := processCfg(underlyingStr); err != nil {
-					return err
-				}
+		if cfg.Underlying != "" {
+			if err := processCfg(cfg.Underlying); err != nil {
+				return err
 			}
 		}
 
@@ -80,10 +78,10 @@ func FromConfigServer(ctx context.Context, cfgs []Transport) (transport.Transpor
 		return nil, err
 	}
 
-	makeServer := func(cfg Transport) transport.TransportServer {
+	makeServer := func(cfg Transport) (transport.TransportServer, error) {
 		switch cfg.Type {
 		case "tcp":
-			return tcp.NewTCPServer()
+			return tcp.NewTCPServer(), nil
 		case "tls":
 			tlsCfg := new(tls.TLSServerConfig)
 
@@ -94,7 +92,7 @@ func FromConfigServer(ctx context.Context, cfgs []Transport) (transport.Transpor
 				// 如果未直接提供，则从文件读取
 				certPem, err := os.ReadFile(certFile)
 				if err != nil {
-					return nil
+					return nil, err
 				}
 				tlsCfg.CertPem = certPem
 			}
@@ -105,7 +103,7 @@ func FromConfigServer(ctx context.Context, cfgs []Transport) (transport.Transpor
 				// 如果未直接提供，则从文件读取
 				keyPem, err := os.ReadFile(keyFile)
 				if err != nil {
-					return nil
+					return nil, err
 				}
 				tlsCfg.KeyPem = keyPem
 			}
@@ -115,28 +113,30 @@ func FromConfigServer(ctx context.Context, cfgs []Transport) (transport.Transpor
 				tlsCfg.ServerName = serverName
 			}
 
-			return tls.NewTLSServer(tlsCfg)
+			return tls.NewTLSServer(tlsCfg), nil
 		case "caesar":
 			caesarCfg := &caesar.CaesarConfig{
 				Shift: int(cfg.Cfg["Shift"].(int64)),
 			}
-			underlyingServer := serverMap[cfg.Cfg["Underlying"].(string)]
-			return caesar.NewCaesarServer(caesarCfg, underlyingServer, nil)
+			underlyingServer := serverMap[cfg.Underlying]
+			return caesar.NewCaesarServer(caesarCfg, underlyingServer, nil), nil
 
 		case "trojan":
-			trojanCfg := &trojan.ServerConfig{
-				RedirectHost: cfg.Cfg["RedirectHost"].(string),
-				RedirectPort: int(cfg.Cfg["RedirectPort"].(int64)),
-				Passwords:    cfg.Cfg["Passwords"].([]string),
+			trojanCfg, err := parseTrojanServerConfig(cfg)
+			if err != nil {
+				return nil, err
 			}
-			underlyingServer := serverMap[cfg.Cfg["Underlying"].(string)]
-			return trojan.NewServer(ctx, underlyingServer, trojanCfg)
+			underlyingServer := serverMap[cfg.Underlying]
+			return trojan.NewServer(ctx, underlyingServer, trojanCfg), nil
 		}
-		return nil
+		return nil, fmt.Errorf("unknown transport type: %s", cfg.Type)
 	}
 
 	for _, cfg := range dependenciesList {
-		server := makeServer(cfg)
+		server, err := makeServer(cfg)
+		if err != nil {
+			return nil, err
+		}
 		if server == nil {
 			return nil, fmt.Errorf("failed to make server for %s", cfg.ID)
 		}
@@ -184,13 +184,13 @@ func FromConfigClient(ctx context.Context, cfgs []Transport) (transport.Transpor
 			caesarCfg := &caesar.CaesarConfig{
 				Shift: int(cfg.Cfg["Shift"].(int64)),
 			}
-			underlyingClient := clientMap[cfg.Cfg["Underlying"].(string)]
+			underlyingClient := clientMap[cfg.Underlying]
 			return caesar.NewCaesarClient(caesarCfg, underlyingClient, nil)
 		case "trojan":
 			trojanCfg := &trojan.ClientConfig{
 				Password: cfg.Cfg["Password"].(string),
 			}
-			underlyingClient := clientMap[cfg.Cfg["Underlying"].(string)]
+			underlyingClient := clientMap[cfg.Underlying]
 			return trojan.NewClient(ctx, underlyingClient, trojanCfg)
 		}
 		return nil
@@ -211,4 +211,37 @@ func FromConfigClient(ctx context.Context, cfgs []Transport) (transport.Transpor
 		}
 	}
 	return tcp.NewTCPClient(), fmt.Errorf("no main transport found, using tcp as fallback")
+}
+
+// ------------------------------------------------------------
+// ------------------------------------------------------------
+
+func parseTrojanServerConfig(cfg Transport) (*trojan.ServerConfig, error) {
+	trojanCfg := &trojan.ServerConfig{}
+	if passwdList, ok := cfg.Cfg["Passwords"]; ok {
+		switch v := passwdList.(type) {
+		case []string:
+			trojanCfg.Passwords = v
+		case []interface{}:
+			for _, item := range v {
+				if str, ok := item.(string); ok {
+					trojanCfg.Passwords = append(trojanCfg.Passwords, str)
+				}
+			}
+		}
+	}
+	if len(trojanCfg.Passwords) == 0 {
+		return nil, fmt.Errorf("passwords is empty")
+	}
+	if redirectHost, ok := cfg.Cfg["RedirectHost"].(string); ok {
+		trojanCfg.RedirectHost = redirectHost
+	} else {
+		return nil, fmt.Errorf("redirect host is empty")
+	}
+	if redirectPort, ok := cfg.Cfg["RedirectPort"].(int64); ok {
+		trojanCfg.RedirectPort = int(redirectPort)
+	} else {
+		return nil, fmt.Errorf("redirect port is empty")
+	}
+	return trojanCfg, nil
 }

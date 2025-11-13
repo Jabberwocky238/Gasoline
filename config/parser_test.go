@@ -246,9 +246,10 @@ func TestTransportConfig(t *testing.T) {
 			Type: "tcp",
 		},
 		{
-			ID:   "caesar-id",
-			Type: "caesar",
-			Cfg:  map[string]interface{}{"Shift": int64(3), "Underlying": "tcp-id"},
+			ID:         "caesar-id",
+			Type:       "caesar",
+			Underlying: "tcp-id",
+			Cfg:        map[string]interface{}{"Shift": int64(3)},
 		},
 	}
 
@@ -260,7 +261,8 @@ Type = "tcp"
 [[Transport]]
 ID = "caesar-id"
 Type = "caesar"
-Cfg = {Shift = 3, Underlying = "tcp-id"}
+Underlying = "tcp-id"
+Cfg.Shift = 3
 `
 
 	parsed, err := ParseConfigFromString(cfgRaw)
