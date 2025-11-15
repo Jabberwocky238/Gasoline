@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-**Gasoline** 是一个受 WireGuard 启发的基于 TCP 的 mesh 组网工具。它提供了灵活的**可自定义传输层**的 VPN 解决方案，专为绕过网络限制和抗审查，从而构建安全的 mesh 网络而设计。
+**Gasoline** 是一个受 WireGuard 启发的基于 TCP 的 mesh 组网工具。它提供了灵活的**可自定义传输层**的 VPN 解决方案，专为绕过GFW和抗审查，从而构建安全的 mesh 网络而设计。
 
 ## 特性
 

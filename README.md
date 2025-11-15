@@ -2,7 +2,7 @@
 
 English | [中文](README_CN.md)
 
-**Gasoline** is a TCP-based mesh networking tool inspired by WireGuard. It provides a flexible VPN solution with **customizable transport layers**, designed for bypassing network restrictions and censorship resistance, building secure mesh networks.
+**Gasoline** is a TCP-based mesh networking tool inspired by WireGuard. It provides a flexible VPN solution with **customizable transport layers**, designed for bypassing GFW and anti-censorship, building secure mesh networks.
 
 ## Features
 
