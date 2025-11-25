@@ -112,7 +112,7 @@ func (device *Device) Start() error {
 	}
 
 	if device.cfg.Interface.ListenPort > 0 {
-		go device.RoutineListenPort() // lifetime listen to device.listener.server
+		go device.RoutineListenPort() // lifetime listen to device.listener
 	}
 
 	go device.RoutineRoutingPackets() // lifetime listen to device.queue.routing

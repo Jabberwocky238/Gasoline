@@ -1,0 +1,122 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送 v 开头的 tag 时触发，例如 v1.0.0, v2.1.3
+
+permissions:
+  contents: write  # 需要写权限来创建 release
+
+jobs:
+  build:
+    name: Build for ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Linux 构建
+          - goos: linux
+            goarch: amd64
+            os: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            os: ubuntu-latest
+          - goos: linux
+            goarch: arm
+            goarm: 7
+            os: ubuntu-latest
+          - goos: linux
+            goarch: 386
+            os: ubuntu-latest
+          
+          # Windows 构建
+          - goos: windows
+            goarch: amd64
+            os: ubuntu-latest
+            ext: .exe
+          
+          # macOS 构建
+          - goos: darwin
+            goarch: amd64
+            os: ubuntu-latest
+          - goos: darwin
+            goarch: arm64
+            os: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'  # 根据你的 go.mod 文件
+          cache: true
+
+      - name: 获取依赖
+        run: go mod download
+
+      - name: 构建二进制文件
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          CGO_ENABLED: 0
+        run: |
+          OUTPUT_NAME="gasoline-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          if [ -n "${{ matrix.goarm }}" ]; then
+            OUTPUT_NAME="gasoline-${{ matrix.goos }}-${{ matrix.goarch }}v${{ matrix.goarm }}${{ matrix.ext }}"
+          fi
+          go build -v -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o "$OUTPUT_NAME" main.go
+          
+          # 压缩文件
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "${OUTPUT_NAME%.exe}.zip" "$OUTPUT_NAME"
+          else
+            tar -czf "${OUTPUT_NAME}.tar.gz" "$OUTPUT_NAME"
+          fi
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: gasoline-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('v{0}', matrix.goarm) || '' }}
+          path: |
+            *.zip
+            *.tar.gz
+          retention-days: 5
+
+  release:
+    name: 创建 Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 显示下载的文件
+        run: ls -lah artifacts/
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          generate_release_notes: true
+          files: |
+            artifacts/*.zip
+            artifacts/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release 创建成功
+        run: |
+          echo "✅ Release ${{ github.ref_name }} 创建成功！"
+          echo "🔗 查看: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+

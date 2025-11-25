@@ -38,16 +38,6 @@ Address = "10.0.0.1/24"
 [[Peer]]
 PublicKey = "peer-public-key"
 AllowedIPs = "10.0.0.2/32"
-
-[[Transport]]
-ID = "tcpID"
-Type = "tcp"
-
-[[Transport]]
-ID = "trojanID"
-Type = "trojan"
-Underlying = "tcpID"
-Cfg.Passwords = ["password1", "password2"]
 ```
 
 **Client Configuration Example:**
@@ -61,8 +51,9 @@ Address = "10.0.0.2/32"
 PublicKey = "server-public-key"
 AllowedIPs = "10.0.0.1/24"
 Endpoint = "server-ip:47789"
-TransportID = "trojanID"
 ```
+
+Customized transport layer, plz goto [doc](docs/custom-transport-layer.md)
 
 ### Running
 
@@ -78,4 +69,3 @@ TransportID = "trojanID"
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-Currently, there is no production version. The handshake part is not implemented, and basic encryption is also not implemented.
